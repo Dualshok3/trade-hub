@@ -26,6 +26,7 @@ class Asset:
     kind: str
     aliases: tuple[str, ...]
     news: str
+    exclude: tuple[str, ...] = ()  # Namen, die nicht dieser Wert sind (z. B. Siemens Energy)
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ def load_watchlist(path: Path | str = DEFAULT_WATCHLIST) -> Watchlist:
                 kind=raw["kind"],
                 aliases=tuple(raw.get("aliases", ())),
                 news=raw.get("news", raw["name"]),
+                exclude=tuple(raw.get("exclude", ())),
             )
         except KeyError as e:
             raise ConfigError(f"Watchlist-Eintrag ohne Feld {e}: {raw}") from None

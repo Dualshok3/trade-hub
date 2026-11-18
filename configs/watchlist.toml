@@ -3,7 +3,9 @@
 # symbol   – Symbol bei Yahoo Finance (Kursquelle)
 # exchange – XETRA, NYSE oder NASDAQ (bestimmt die Handelszeiten)
 # kind     – stock oder etf (wichtig für Steuern: Teilfreistellung bei Aktien-ETFs)
-# aliases  – Namen, unter denen der Wert in News vorkommt (Groß-/Kleinschreibung egal, ganze Wörter)
+# aliases  – Namen, unter denen der Wert in News vorkommt (ganze Wörter; kurze Großbuchstaben-Kürzel wie SAP
+#            nur genau so geschrieben, sonst Groß-/Kleinschreibung egal)
+# exclude  – ähnliche Namen anderer Firmen, die nicht dieser Wert sind
 # news     – Suchbegriff für den News-Feed
 
 [[asset]]
@@ -24,6 +26,7 @@ exchange = "XETRA"
 currency = "EUR"
 kind = "stock"
 aliases = ["Siemens"]
+exclude = ["Siemens Energy", "Siemens Healthineers", "Siemens Gamesa"]
 news = "Siemens Aktie"
 
 [[asset]]
@@ -34,6 +37,7 @@ exchange = "XETRA"
 currency = "EUR"
 kind = "stock"
 aliases = ["Allianz"]
+exclude = ["Allianz Trade", "Allianz Global Investors"]
 news = "Allianz Aktie"
 
 [[asset]]
@@ -44,6 +48,7 @@ exchange = "XETRA"
 currency = "EUR"
 kind = "stock"
 aliases = ["Deutsche Telekom", "Telekom"]
+exclude = ["Telekom Austria", "Türk Telekom"]
 news = "Deutsche Telekom Aktie"
 
 [[asset]]
@@ -84,6 +89,7 @@ exchange = "NASDAQ"
 currency = "USD"
 kind = "stock"
 aliases = ["Apple"]
+exclude = ["Apple Hospitality"]
 news = "Apple stock"
 
 [[asset]]

@@ -8,10 +8,14 @@
 > - **Lokal:** Gemma 4 26B-A4B auf der eigenen crit-Engine
 > - **Referenz:** Claude Opus 5.5
 >
-> Ein Benchmark vergleicht beide: Rendite, Risiko, Entscheidungsqualität, Kosten und Geschwindigkeit.
+> Ein Benchmark vergleicht beide: Entscheidungsqualität, Rendite, Risiko, Kosten und Geschwindigkeit.
 >
-> Kernfrage: *Wie nah kommt ein lokales Modell auf einer 16-GB-Karte an Opus 5.5 heran, wenn man die gesparte Zeit in
-> mehr Nachdenken pro Entscheidung steckt?*
+> Kernfrage: *Wie gut entscheidet ein lokales Modell auf einer 16-GB-Karte, gemessen daran, was seine Entscheidungen
+> danach am Markt tatsächlich gebracht hätten, und wie schneidet es dabei im Vergleich zu Opus 5.5 ab?*
+>
+> Wichtig: **Opus ist Vergleichsgegner, nicht Maßstab.** Ob eine Entscheidung gut war, zeigt der Markt danach
+> (Forward-Score, Abschnitt 5.2), nicht die Frage, ob Opus dasselbe getan hätte. Gemma kann also besser abschneiden
+> als Opus, und auch beide können schlechter sein als einfache Regeln ohne LLM.
 
 Arbeitstitel des Repos: `trading-agent`.
 
@@ -104,6 +108,29 @@ nur kurz „halten“, statt jedes Mal eine volle Analyse zu starten.
 | **Termine** | Earnings-Kalender, Leitzins-Termine | Optional, hilft bei „warum bewegt sich das gerade?“ |
 
 Alle API-Keys liegen in einer `.env`, die nicht ins Git kommt.
+
+### 3.1.1 News-Sortierung (erledigt am 18.11.2026)
+
+Ein Live-Snapshot enthält 700 und mehr Meldungen, ein großer Teil davon automatisch erzeugt. In den Prompt kommen
+pro Wert nur die **Top 5**. `trading_agent/newsrank.py` macht das deterministisch beim Lesen des Snapshots, die Regeln
+stehen in `configs/news_rank.toml`. Weil die Sortierung erst beim Lesen läuft, gelten verbesserte Regeln auch für alte
+Snapshots.
+
+| Schritt | Was passiert |
+|---|---|
+| **Zuordnung** | Aliases als ganze Wörter. Kurze Kürzel wie SAP oder DAX zählen nur in Großbuchstaben, sonst wäre „Sie“ = Siemens. Ausschlüsse pro Wert („Siemens Energy“ ist nicht Siemens). Index-Etiketten („DAX 40-Titel Henkel“) zählen nicht für den Index. Banken als Analysten („JPMorgan upgrades Millicom“) zählen nicht für die Bank. |
+| **Rauschen** | Wird nie gezeigt: „So viel hätte eine Investition …“, Derivate-Werbung, automatische Kursmeldungen („X Aktie News: X legt am Vormittag zu“), US-Fondsmeldungen („LLC Grows Holdings“), Optionshandel, Konferenz-Hinweise |
+| **Abwertung** | Klick- und Meinungsstücke („Prediction: …“, „Should You Buy …“, Fragen-Titel, Chartanalysen) zählen nur 40 % |
+| **Bündelung** | Ähnliche Titel (gemeinsame Wörter ≥ 35 %) gelten als eine Geschichte. Gezeigt wird die beste Meldung, dazu die Zahl der Quellen |
+| **Relevanz** | Quelle (seriöse Presse 1,0 · Standard 0,6 · Content-Farmen 0,3) × Ereignis (Prognose, Rating, Übernahme, earnings … ×1,6) × Wert im Titel vorne ×1,3, nur im Anriss ×0,5 × Aktualität (Halbwertszeit 12 h) × Abdeckung durch mehrere Quellen |
+
+**Ergebnis auf dem ersten Live-Snapshot** (705 Meldungen): 122 als Rauschen aussortiert, 142 ohne Bezug zu einem Wert
+der Watchlist. Pro Wert stehen jetzt echte Ereignisse oben, z. B. Siemens „erhöht die Prognose“, BASF „Jefferies:
+sell“, Nvidia „beats forecasts“, JPMorgan „names new CFO“. Vorher standen dort Analystenmeldungen über andere
+Firmen. 37 Tests decken Zuordnung, Rauschen, Bündelung und Sortierung ab.
+
+**Grenzen:** Die Regeln sind von Hand gebaut und an einem einzigen Tag geprüft. Es gibt noch kein gelabeltes
+Eval-Set, das Präzision und Recall misst. Das sollte entstehen, sobald ein paar Wochen Snapshots vorliegen.
 
 ### 3.2 Universum
 
@@ -258,7 +285,8 @@ Skript: `scripts/m0_engine_check.py`, Bericht: `runs/m0/m0-20261118T093631.json`
   Self-Consistency (Stufe L3) braucht es höhere Temperatur, verschiedene Seeds oder leicht variierte Prompts, sonst
   bringen mehrere Antworten nichts. Das wird in Meilenstein 6 gemessen.
 - **Qualität noch offen:** crit-eval kann Gemma-4-GGUFs nicht bewerten. Die Tests oben zeigen, dass Format und Inhalt
-  stimmen, sagen aber nichts über die Güte der Entscheidungen. Das zeigt erst der Vergleich mit Opus.
+  stimmen, sagen aber nichts über die Güte der Entscheidungen. Das zeigt erst der Forward-Score (Abschnitt 5.2),
+  also was die Entscheidungen danach am Markt gebracht hätten.
 
 ### 4.1.2 Start der Engine
 
@@ -282,11 +310,16 @@ Laut crit-Doku: `n > 1` wird abgelehnt, deshalb laufen mehrere Antworten als par
 ### 4.2 Referenz: Claude Opus 5.5
 
 - Modell-ID `claude-opus-5-5` über `langchain-anthropic`
-- Läuft auf derselben Technik-Stufe wie das beste Gemma-Setup **ohne** Self-Consistency, also als starke Referenz
-  ohne künstliche Hilfe
+- Läuft auf derselben Technik-Stufe wie das beste Gemma-Setup **ohne** Self-Consistency, also als starker
+  Vergleichsgegner ohne künstliche Hilfe
+- **Rolle:** Opus ist ein zweiter Teilnehmer, der auf denselben Snapshots entscheidet und mit derselben Kennzahl
+  bewertet wird. Seine Entscheidungen gelten **nicht** als richtig. Sie dienen als Vergleich und als Quelle für die
+  Zweitkennzahl „Übereinstimmung“ (Abschnitt 5.3).
 - Tageslimit für die API-Kosten im Runner, bei Überschreitung pausiert der Opus-Agent und es wird geloggt
 
-### 4.3 Wie Gemma sich an Opus herantastet (Stufen)
+### 4.3 Wie Gemma besser entscheiden soll (Stufen)
+
+Ziel jeder Stufe ist ein **besserer Forward-Score**, nicht mehr Übereinstimmung mit Opus.
 
 | Stufe | Technik |
 |---|---|
@@ -295,7 +328,12 @@ Laut crit-Doku: `n > 1` wird abgelehnt, deshalb laufen mehrere Antworten als par
 | **L2** | Aufgaben zerlegt: Watchlist-Check, dann Analyse, dann Entscheidung |
 | **L3** | Self-Consistency: 5 bis 10 parallele Entscheidungen, Mehrheit bei der Aktion, Median bei der Menge |
 | **L4** | Journal und Memory: eigene frühere Begründungen und deren Ausgang im Prompt |
-| **L5** | Few-Shot aus Opus-Entscheidungen früherer Takte (nur aus Takten, die nicht im Test-Zeitraum liegen) |
+| **L5** | Few-Shot aus früheren Entscheidungen mit **gutem Forward-Score**, egal von welchem Modell (nur aus Takten vor dem Test-Zeitraum) |
+
+**Zu L5:** Few-Shots aus Opus-Entscheidungen würden Gemma beibringen, wie Opus zu formulieren und zu entscheiden.
+Damit stiege die Übereinstimmung mit Opus künstlich, auch wenn die Beispiele aus anderen Takten stammen. Über die
+Qualität sagt das nichts. Deshalb wählt L5 Beispiele nach ihrem Forward-Score aus, nicht nach ihrer Herkunft. Für
+L5 wird die Übereinstimmung mit Opus im Report **nicht als Erfolg gewertet** und nur mit diesem Hinweis gezeigt.
 
 Live läuft immer **eine** festgelegte Stufe, damit das Depot eine klare Geschichte hat. Alle anderen Stufen werden per
 Replay auf denselben Snapshots verglichen (Abschnitt 5).
@@ -319,25 +357,54 @@ Beide Depots laufen parallel auf denselben Takten.
 Mitlaufende Vergleichs-Depots ohne LLM: `buy_and_hold_etf`, `equal_weight_watchlist`, `sma_crossover`, `random`.
 Schlagen beide LLMs diese nicht, ist das ein ehrliches Ergebnis.
 
-### 5.2 Replay-Bench (die belastbaren Zahlen)
+### 5.2 Hauptkennzahl: Forward-Score (Replay)
 
 Jeder Live-Snapshot wird mit Hash gespeichert. Daraus entsteht mit der Zeit ein **wachsender Datensatz echter
-Marktsituationen**, auf dem sich alles wiederholen lässt:
+Marktsituationen**. Weil die Snapshots eingefroren sind, kennt man später die Kursentwicklung danach. So lässt sich
+jede Entscheidung daran messen, was sie tatsächlich gebracht hätte.
 
-- **Übereinstimmung mit Opus:** Wie oft trifft Gemma dieselbe Entscheidung wie Opus (Aktion, Richtung, ungefähre Größe)?
-  Das ist die Kennzahl, die am wenigsten vom Zufall abhängt.
-- **Ablation L0 bis L5:** Was bringt jede Technik? Gemessen an der Übereinstimmung mit Opus und an der
-  **nachträglichen Bewertung** (5.3).
-- **Prompt-Änderungen** testen, bevor sie live gehen.
-- **Rechenaufwand-gleicher Vergleich:** Gemma L3 mit N Antworten gegen Opus mit einer, bei ähnlicher Wartezeit.
+**Forward-Score einer Entscheidung** = Ergebnis der Order nach *h* Handelstagen **minus** Ergebnis von „nichts tun“,
+in Euro und in % des Depots, **nach Gebühren und Steuern**:
 
-### 5.3 Nachträgliche Bewertung von Entscheidungen
+| Entscheidung | Ergebnis nach *h* Tagen |
+|---|---|
+| Kauf für *x* € | *x* × (Rendite des Werts − Rendite des Vergleichsmarkts) − Gebühr |
+| Verkauf für *x* € | *x* × (Rendite des Vergleichsmarkts − Rendite des Werts) − Gebühr − Steuer auf den realisierten Gewinn |
+| Halten | 0, denn das ist die Nulllinie |
 
-Weil die Snapshots eingefroren sind, kennt man später die Kursentwicklung danach. Jede Entscheidung bekommt einen
-**Forward-Score**: Was hätte die Entscheidung nach 1, 5 und 20 Handelstagen gebracht, verglichen mit „nichts tun“?
-Das bewertet einzelne Entscheidungen, unabhängig davon, wie sich das Depot insgesamt entwickelt hat.
+- **Horizonte:** 1, 5 und 20 Handelstage. Haupthorizont ist **5 Tage**. 1 Tag ist vor allem Rauschen, 20 Tage
+  vermischen schon zu viele spätere Ereignisse.
+- **Vergleichsmarkt:** das gleichgewichtete Watchlist-Depot. So zählt nur, ob der gewählte Wert besser lief als die
+  Alternativen, nicht ob der Gesamtmarkt gerade steigt. Ein Agent, der in einer Hausse einfach alles kauft, bekommt
+  dafür keine Punkte.
+- **Kosten zählen mit:** Gebühren und Steuern gehen ein. Eine Order, die 0,5 % bringt und 1 € Gebühr kostet, ist bei
+  einem 100-€-Depot ein Verlust. Unnötiges Handeln wird so automatisch bestraft.
+- **Auswertung pro Modell und Stufe:** mittlerer Forward-Score pro Entscheidung, Summe über alle Takte, Anteil
+  positiver Entscheidungen, jeweils mit Bootstrap-Konfidenzintervall (5.5).
+- **Ablation L0 bis L5:** Jede Stufe wird am Forward-Score gemessen. Eine Stufe „wirkt“ nur, wenn sie ihn
+  verbessert.
+- **Rechenaufwand-gleicher Vergleich:** Gemma L3 mit N Antworten gegen Opus mit einer, bei ähnlicher Wartezeit,
+  ebenfalls am Forward-Score.
+- **Prompt-Änderungen** werden per Replay getestet, bevor sie live gehen.
 
-### 5.4 Agent-Zuverlässigkeit und Effizienz
+**Grenzen:** Auch der Forward-Score schwankt stark mit dem Zufall. Belastbar wird er erst über viele Entscheidungen.
+Deshalb steht im Report immer die Zahl der Entscheidungen, und Unterschiede gelten erst dann als echt, wenn das
+Konfidenzintervall der gepaarten Differenz die Null nicht enthält.
+
+### 5.3 Zweitkennzahl: Übereinstimmung mit Opus
+
+Wie oft trifft Gemma auf demselben Snapshot dieselbe Entscheidung wie Opus (Aktion, Wert, ungefähre Größe)? Diese
+Zahl streut weniger als der Forward-Score und ist deshalb schon nach wenigen Takten aussagekräftig. Sie misst aber
+nur, **wie ähnlich Gemma entscheidet, nicht wie gut**. Deshalb gilt:
+
+- Sie wird nur **als zweite Kennzahl** neben dem Forward-Score gezeigt und nie allein als Erfolg berichtet.
+- Aussagekräftig wird sie vor allem **aufgeschlüsselt nach dem Forward-Score**:
+  - Wo **beide gleich** entscheiden, ist es interessant, ob das eher gute oder schlechte Entscheidungen waren.
+  - Wo **sie sich unterscheiden**, interessiert, wer recht hatte. Das ist die eigentlich spannende Tabelle: Wie oft
+    lag Gemma richtig, wo Opus anders entschieden hat, und umgekehrt?
+- Bei Stufe L5 ist sie nur eingeschränkt verwertbar (Abschnitt 4.3).
+
+### 5.4 Weitere Kennzahlen: Agent-Zuverlässigkeit und Effizienz
 
 | Kennzahl | |
 |---|---|
@@ -412,12 +479,12 @@ trading-agent/
 | # | Meilenstein | Fertig, wenn |
 |---|---|---|
 | **0** | **Gemma-Engine prüfen** ✅ | Erledigt am 18.11.2026. Ergebnisse in Abschnitt 4.1.1: kein natives Tool-Calling, also Prompt-Modus mit JSON-Schema. Offen ist noch der dauerhafte Starter (4.1.2). |
-| **1** | **Feeds und Snapshots** ✅ | Erledigt am 18.11.2026: `trading-agent snapshot` holt Kurse (yfinance, USD in EUR umgerechnet) und Google-News-RSS für 15 Werte, ordnet News per Alias zu und friert alles als gzip-JSON mit SHA-256 ein. 30 Tests ohne Netz, u. a. kein Look-ahead bei Kerzen und News, Manipulationsschutz per Hash, Werkzeuge ohne Netzzugriff. Erster Live-Snapshot: 15/15 Kurse, 705 News. **Offen für Meilenstein 3:** Viele News sind Rauschen (z. B. „So viel hätte eine Investition …“). Sie brauchen eine Relevanz-Sortierung, bevor sie in den Prompt gehen. |
+| **1** | **Feeds und Snapshots** ✅ | Erledigt am 18.11.2026: `trading-agent snapshot` holt Kurse (yfinance, USD in EUR umgerechnet) und Google-News-RSS für 15 Werte, ordnet News per Alias zu und friert alles als gzip-JSON mit SHA-256 ein. 30 Tests ohne Netz, u. a. kein Look-ahead bei Kerzen und News, Manipulationsschutz per Hash, Werkzeuge ohne Netzzugriff. Erster Live-Snapshot: 15/15 Kurse, 705 News. Die Relevanz-Sortierung der News ist erledigt, siehe 3.1.1. |
 | **2** | **Musterdepot und Vergleichs-Depots** | Orders mit Bruchstücken, Gebühren, Handelszeiten und Ausführung zum *nächsten* Kurs funktionieren. Die Steuerberechnung (FIFO, beide Verlusttöpfe, Erstattung) besteht die von Hand nachgerechneten Testfälle. Die Vergleichs-Depots laufen. |
 | **3** | **Agent mit Fake-LLM** | Der Graph läuft komplett durch inklusive Risk-Check und Journal, die CI ist grün. |
 | **4** | **Beide Modelle anbinden und eine Woche Probebetrieb** | Gemma und Opus handeln 3× täglich. Kosten pro Tag und Ausfallquote sind gemessen, die Opus-Budgetgrenze ist festgelegt. |
 | **5** | **Dashboard** | Equity-Kurven, Entscheidungs-Feed und Positionen sind sichtbar. |
-| **6** | **Replay-Bench und Stufen L1–L5** | Ablation auf den aufgezeichneten Snapshots, Forward-Score, erster Report mit Konfidenzintervallen. |
+| **6** | **Replay-Bench und Stufen L1–L5** | Forward-Score (Hauptkennzahl) für alle Entscheidungen auf den aufgezeichneten Snapshots, Ablation aller Stufen daran gemessen, Übereinstimmung mit Opus als Zweitkennzahl aufgeschlüsselt nach Forward-Score, erster Report mit Konfidenzintervallen. |
 | **7** | **Dauerbetrieb** | Läuft über Wochen. Das README zeigt regelmäßig aktualisierte Ergebnisse. |
 | **8** | **Optional** | Alpaca-Paper-Broker, mehr Takte, RAG-MCP-Server als Recherche-Tool (z. B. über Geschäftsberichte als PDF) |
 

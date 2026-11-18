@@ -76,6 +76,37 @@ def show(path: Path) -> None:
     _print_overview(load_snapshot(path))
 
 
+@app.command()
+def news(
+    path: Path,
+    asset: str = typer.Option(None, help="Nur dieser Wert (ID aus der Watchlist)"),
+    limit: int = typer.Option(5, help="Meldungen pro Wert"),
+    hours: float = typer.Option(24, help="Zeitfenster in Stunden"),
+) -> None:
+    """Die sortierten Top-News eines Snapshots anzeigen, so wie der Agent sie bekommt."""
+    tools = SnapshotTools(load_snapshot(path))
+    st = tools.ranker.stats()
+    console.print(
+        f"News: {st['total']} gesamt · {st['noise']} als Rauschen aussortiert · "
+        f"{st['unassigned']} ohne Wert-Bezug"
+    )
+    ids = [asset] if asset else list(tools.assets)
+    for asset_id in ids:
+        top = tools.get_top_news(asset_id, hours, limit)
+        console.print(f"\n[bold]{asset_id}[/bold] ({len(top)})")
+        for n in top:
+            extra = f" +{n['sources_count'] - 1} Quellen" if n["sources_count"] > 1 else ""
+            console.print(_news_line(n) + extra)
+    if not asset:
+        console.print("\n[bold]Markt[/bold]")
+        for n in tools.get_market_news(hours, limit):
+            console.print(_news_line(n))
+
+
+def _news_line(n: dict) -> str:
+    return f"  {n['score']:.2f}  {n['published'][11:16]}  {n['source'][:18]:<18} {n['title']}"
+
+
 @app.command(name="list")
 def list_cmd(root: Path = typer.Option(DEFAULT_DIR, help="Snapshot-Ordner")) -> None:
     """Alle gespeicherten Snapshots auflisten."""

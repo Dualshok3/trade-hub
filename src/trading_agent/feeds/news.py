@@ -93,20 +93,18 @@ def _normalize_title(title: str) -> str:
     return re.sub(r"[^a-z0-9äöüß]+", " ", title.lower()).strip()
 
 
-def alias_patterns(watchlist: Watchlist) -> dict[str, re.Pattern]:
-    pats = {}
-    for asset in watchlist.assets:
-        names = sorted({*asset.aliases, asset.id}, key=len, reverse=True)
-        alt = "|".join(re.escape(n) for n in names)
-        pats[asset.id] = re.compile(rf"(?<![\w&])(?:{alt})(?![\w&])", re.IGNORECASE)
-    return pats
+def alias_patterns(watchlist: Watchlist):
+    """Zuordnung von Text zu Werten (siehe trading_agent.newsrank.AssetMatcher)."""
+    from trading_agent.newsrank import AssetMatcher
+
+    return AssetMatcher(list(watchlist.assets))
 
 
-def match_assets(text: str, patterns: dict[str, re.Pattern]) -> tuple[str, ...]:
-    return tuple(asset_id for asset_id, pat in patterns.items() if pat.search(text))
+def match_assets(text: str, matcher) -> tuple[str, ...]:
+    return matcher.match(text)
 
 
-def parse_feed(raw: bytes | str, query: str, patterns: dict[str, re.Pattern]) -> list[NewsItem]:
+def parse_feed(raw: bytes | str, query: str, patterns) -> list[NewsItem]:
     import feedparser
 
     feed = feedparser.parse(raw)

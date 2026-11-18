@@ -1,0 +1,83 @@
+# Regeln für die News-Sortierung (trading_agent/newsrank.py). Reguläre Ausdrücke, Groß-/Kleinschreibung egal.
+# Änderungen wirken auch auf alte Snapshots, weil sie beim Lesen angewendet werden.
+
+[noise]
+# Meldungen, die nie in den Prompt kommen: automatisch erzeugte Texte ohne Informationsgehalt
+patterns = [
+  # „So viel hätte eine Investition in … gebracht“ (finanzen.net & Co.)
+  'So viel (Gewinn |Verlust )?(hätte|hätten|wäre|wären)',
+  'Investment .* von vor (einem|\d+) (Jahr|Jahren)',
+  # Derivate-Werbung
+  'Open End Turbos?|Turbo-Optionsscheine?|Knock-?Outs? auf|Faktor-Zertifikate?',
+  # Automatische Kursmeldungen („X Aktie News: X legt am Vormittag zu“, „ETF verteuert sich“)
+  'ETF (verteuert|verbilligt) sich|ETF (im Plus|im Minus|schwächer|stärker|fester|leichter|legt zu|gibt nach)',
+  '\bAktie News: ',
+  # US-Meldepflichten von Fonds (MarketBeat, TipRanks, …)
+  '\b(grows|increases|decreases|trims|reduces|raises|lowers|boosts|cuts|sells|acquires|buys|adds|lifts) (its )?(holdings|stake|position|shares)\b',
+  '\b(stock|shares|position) (acquired|sold|purchased|bought|trimmed|raised|lowered) by\b',
+  '^Key facts:',
+  '\bshares sold by\b|\bsells \d[\d,.]* shares\b|\bbuys \d[\d,.]* shares\b',
+  # Optionshandel und Pressemitteilungs-Hinweise
+  '^Option traders\b|\bunusual options activity\b',
+  'live webcast|to present at|to participate in .* conference',
+]
+
+[penalty]
+# Meinungs- und Klickstücke: bleiben drin, zählen aber weniger
+factor = 0.4
+patterns = [
+  '^Prediction:|^Where Will .* Be in|^Should You Buy|^Is .* a (Buy|Sell)\b|^\d+ (Reasons|Stocks)\b',
+  '^Diese \d+ |Top-\d+|Geheimtipp|Jetzt kaufen\?|Kaufen oder verkaufen\?|\?$',
+  'Jim Cramer|Motley Fool',
+  'Chartanalyse|Chart-Check|Charttechnik|DAX-Check|Tageskommentar',
+  # automatische Index-Berichte („S&P 500 zeigt sich letztendlich leichter“)
+  'zeigt sich (letztendlich |zum Start |am Mittag )?(leichter|fester|freundlich|schwächer|stärker)|beginnt die Sitzung|zum Handelsende|letztendlich',
+]
+
+[events]
+# Kursrelevante Ereignisse, deutsch und englisch
+factor = 1.6
+words = [
+  'Prognose', 'Ausblick', 'Quartal\w*', 'Zahlen', 'Umsatz', 'Gewinn', 'Gewinnwarnung', 'Übernahme\w*', 'Fusion',
+  'Auftrag', 'Großauftrag', 'Kursziel\w*', 'hochgestuft', 'abgestuft', 'Hochstufung', 'Abstufung', 'Rating',
+  'Dividende\w*', 'Aktienrückkauf', 'Rückkauf', 'Vorstandschef', 'Konzernchef', 'Chefwechsel', 'Rücktritt',
+  'Stellenabbau', 'Sparprogramm', 'Kartell\w*', 'Klage', 'Rückruf', 'Streik', 'Ad-hoc', 'Kapitalerhöhung',
+  'Underweight', 'Overweight', 'Outperform', 'Underperform', 'buy"?', 'sell"?', 'Neutral',
+  'earnings', 'guidance', 'forecast', 'outlook', 'beats?', 'miss(es|ed)?', 'revenue', 'profit', 'quarter(ly)?',
+  'acquisition', 'acquire', 'merger', 'takeover', 'deal', 'upgrade[sd]?', 'downgrade[sd]?', 'price target',
+  'layoffs?', 'job cuts', 'lawsuit', 'probe', 'antitrust', 'investigation', 'buyback', 'dividend', 'CEO',
+  'recall', 'contract', 'IPO',
+]
+
+[macro]
+# Marktweite Themen für den allgemeinen Teil des Prompts
+words = [
+  'EZB', 'Fed', 'Federal Reserve', 'Leitzins\w*', 'Zinsen', 'Zinssenkung', 'Zinserhöhung', 'Inflation',
+  'rate (hike|cut)s?', 'interest rates?', 'Rezession', 'recession', 'Arbeitsmarkt', 'jobs report', 'payrolls',
+  'Konjunktur', 'BIP', 'GDP', 'Zölle', 'tariffs?', 'Ölpreis', 'oil prices?', 'Anleihen', 'bond yields?',
+  'DAX', 'Dow Jones', 'S&P 500', 'Nasdaq', 'Wall Street', 'Euro ?STOXX',
+]
+
+[scoring]
+half_life_hours = 12.0
+# Ab diesem Anteil gemeinsamer Wörter gelten zwei Titel als dieselbe Geschichte
+cluster_jaccard = 0.35
+
+[source_weights]
+high = 1.0
+default = 0.6
+low = 0.3
+
+[sources]
+high = [
+  'Reuters', 'Bloomberg.com', 'Bloomberg', 'WSJ', 'The Wall Street Journal', 'Financial Times', 'FT',
+  'Handelsblatt', 'FAZ', 'Frankfurter Allgemeine', 'Börsen-Zeitung', 'dpa-AFX', 'CNBC', "Barron's",
+  'Morningstar', 'tagesschau.de', 'n-tv.de', 'WELT', 'Der Spiegel', 'SPIEGEL', 'Süddeutsche Zeitung',
+  "Investor's Business Daily", 'Associated Press', 'AP News', 'manager magazin', 'WirtschaftsWoche', 'Capital',
+  'boerse.de', 'Börse Online', 'Der Aktionär', 'Investing.com', 'Investing.com Deutsch', 'Yahoo Finance',
+]
+low = [
+  'MarketBeat', 'TipRanks', 'Stock Titan', 'Pluang', 'Traders Union', 'Finbold', 'aktien.news', 'Finanztrends',
+  'Börse Express', 'ad-hoc-news.de', 'Börse Global', 'Kapitalmarktexperten', 'AktienCheck.de', 'sharedeals.de',
+  'FinanceBuzz', 'Briefs Finance', 'Markets.com', 'Traders Union', 'Benzinga', 'Seeking Alpha',
+]

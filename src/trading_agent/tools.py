@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from trading_agent import indicators as ind
+from trading_agent.newsrank import NewsRanker
 
 
 class ToolError(ValueError):
@@ -25,6 +26,13 @@ class SnapshotTools:
         self.s = snapshot
         self.assets = {a["id"]: a for a in snapshot["watchlist"]}
         self.now = datetime.fromisoformat(snapshot["taken_at"])
+        self._ranker = None
+
+    @property
+    def ranker(self) -> NewsRanker:
+        if self._ranker is None:
+            self._ranker = NewsRanker(self.s)
+        return self._ranker
 
     def _asset(self, asset_id: str) -> dict:
         if asset_id not in self.assets:
@@ -93,6 +101,16 @@ class SnapshotTools:
             out.append({k: n[k] for k in ("id", "published", "title", "snippet", "source", "assets")})
         return out[:limit]
 
+    def get_top_news(self, asset_id: str, hours: float = 24, limit: int = 5) -> list[dict]:
+        """Die relevantesten Meldungen zu einem Wert: ohne Rauschen, ähnliche Meldungen gebündelt, nach
+        Relevanz sortiert. Das ist die Variante für den Prompt."""
+        self._asset(asset_id)
+        return self.ranker.for_asset(asset_id, hours, limit)
+
+    def get_market_news(self, hours: float = 24, limit: int = 5) -> list[dict]:
+        """Die relevantesten marktweiten Meldungen (Zinsen, Inflation, Indizes)."""
+        return self.ranker.market(hours, limit)
+
     def news_ids(self) -> set[str]:
         """Alle gültigen News-IDs dieses Snapshots (zum Prüfen zitierter Quellen)."""
         return {n["id"] for n in self.s["news"]}
@@ -111,7 +129,7 @@ class SnapshotTools:
                     "change_5d": i["change_5d"],
                     "rsi14": i["rsi14"],
                     "above_sma50": i["above_sma50"],
-                    "news_24h": len(self.get_news(asset_id, 24, limit=1000)),
+                    "news_24h": len(self.get_top_news(asset_id, 24, limit=1000)),
                     "market_open": q.get("market_open"),
                 }
             )

@@ -86,7 +86,9 @@ def build_snapshot(
         "schema": SCHEMA,
         "taken_at": now.isoformat(),
         "open_exchanges": open_exchanges(now),
-        "watchlist": [asdict(a) | {"aliases": list(a.aliases)} for a in watchlist.assets],
+        "watchlist": [
+            asdict(a) | {"aliases": list(a.aliases), "exclude": list(a.exclude)} for a in watchlist.assets
+        ],
         "fx": {"EURUSD": eurusd, "symbol": watchlist.fx_symbol},
         "quotes": quotes,
         "history": history,
