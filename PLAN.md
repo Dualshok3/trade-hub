@@ -129,6 +129,14 @@ der Watchlist. Pro Wert stehen jetzt echte Ereignisse oben, z. B. Siemens „erh
 sell“, Nvidia „beats forecasts“, JPMorgan „names new CFO“. Vorher standen dort Analystenmeldungen über andere
 Firmen. 37 Tests decken Zuordnung, Rauschen, Bündelung und Sortierung ab.
 
+**Nächste Ausbaustufe: Reranker aus LocalRAG.** Das RAG-Projekt hat mit `bge-reranker-v2-m3` schon einen fertigen
+Cross-Encoder (`localrag/retrieval/reranker.py`). Er bewertet Frage und Text gemeinsam und kann die Kandidaten nach
+den festen Regeln neu sortieren, mit einer Frage wie „Ist diese Meldung kursrelevant für SAP?“. Ablauf: Die Regeln
+filtern Rauschen und liefern pro Wert die Top 20, der Reranker wählt daraus die Top 5. Das ist billig, weil nur wenige
+Paare bewertet werden. Wichtig fürs Replay: Modellname und Version des Rerankers kommen in jeden Report, und die Scores
+werden pro Snapshot zwischengespeichert. Der Reranker braucht etwa 1 bis 2 GB VRAM und teilt sich die GPU mit der
+crit-Engine. Weil beide Projekte dann Engine und Reranker teilen, ist das auch eine schöne Geschichte fürs Portfolio.
+
 **Grenzen:** Die Regeln sind von Hand gebaut und an einem einzigen Tag geprüft. Es gibt noch kein gelabeltes
 Eval-Set, das Präzision und Recall misst. Das sollte entstehen, sobald ein paar Wochen Snapshots vorliegen.
 
@@ -142,9 +150,9 @@ vergleichbar. Kein Krypto im MVP, weil dort rund um die Uhr gehandelt wird und d
 
 | Regel | Wert im MVP |
 |---|---|
-| Startkapital | **100 € pro Agent**, wie ein realistisches Einsteiger-Depot |
+| Startkapital | **Live: 100 € pro Agent**, wie ein realistisches Einsteiger-Depot. **Im Replay zusätzlich ein fiktives Depot mit 10.000 €** und denselben Gebühren (siehe unten) |
 | Bruchstücke | **Ja**, Kauf nach Euro-Betrag statt nach Stückzahl. Mit 100 € ist sonst kaum eine Aktie handelbar (eine SAP-Aktie kostet über 200 €), Neobroker bieten das ebenfalls an |
-| Ausführung | Zum **nächsten** verfügbaren Kurs nach der Entscheidung, nie zum Kurs, den der Agent schon gesehen hat (sonst Look-ahead) |
+| Ausführung | Zum **nächsten** verfügbaren Kurs nach der Entscheidung, nie zum Kurs, den der Agent schon gesehen hat (sonst Look-ahead). Dieser Ausführungskurs wird im selben Takt abgerufen und gespeichert, siehe „Ausführungskurs“ unten |
 | Gebühren | **1 € pro Order** plus Spread-Aufschlag, wie bei gängigen Neobrokern. Bei 100 € Depot ist das 1 % pro Order: Wer hektisch handelt, verliert allein durch Gebühren deutlich. Das ist gewollt, denn genau so ist es in der Realität. |
 | Mindestorder | 10 €, damit der Agent nicht für 2 € Orders mit 1 € Gebühr aufgibt |
 | Steuern | Deutsche Abgeltungsteuer **pro Trade**, Details in Abschnitt 3.4 |
@@ -152,43 +160,76 @@ vergleichbar. Kein Krypto im MVP, weil dort rund um die Uhr gehandelt wird und d
 | Einschränkungen | Keine Leerverkäufe, kein Hebel |
 | Speicher | SQLite: Orders, Positionen (einzelne Kauf-Lots für FIFO), Cash, Steuertöpfe, Equity-Verlauf |
 
+**Ausführungskurs (wichtig für Replay):** Die Tools lesen nur aus dem eingefrorenen Snapshot. Damit ein Replay
+Orders ausführen kann, muss auch der Kurs gespeichert sein, zu dem ausgeführt wurde. Deshalb besteht jeder Takt aus
+**zwei** eingefrorenen Teilen:
+1. **Entscheidungs-Snapshot** (Zeitpunkt *t*): Kurse, Historie, News. Darauf entscheiden die Agenten.
+2. **Ausführungs-Kurse** (Zeitpunkt *t′* > *t*, direkt nach den Entscheidungen im selben Takt): ein frischer Kursabruf
+   für **alle** Werte der Watchlist, nicht nur die gehandelten. So kann ein Replay auch Orders ausführen, die live
+   niemand gegeben hat. Gespeichert als eigene Datei mit Verweis auf den Hash des Entscheidungs-Snapshots.
+
+Ist der Ausführungskurs nicht neuer als der Entscheidungskurs (Börse zu, Kurs verzögert), wartet die Order bis zum
+nächsten Takt und wird dort zu dessen Ausführungskurs abgerechnet. Der Replay macht exakt dasselbe.
+
+**Kurszeitpunkt statt Abrufzeitpunkt:** yfinance liefert je nach Börse verzögerte Kurse. Gemessen am 18.11.2026:
+Xetra-Kurse waren rund **15 Minuten alt**, US-Kurse außerhalb der Handelszeit vom Vorabend. Jeder Kurs speichert
+deshalb `as_of` (Zeitpunkt der letzten Minutenkerze an der Börse), `fetched_at` (Abruf) und `age_minutes`. Ein
+Kurs mit Zeitstempel nach dem Snapshot wird verworfen (umgesetzt in Meilenstein 1).
+
+**Zwei Depotgrößen, getrennte Sicht auf Qualität und Gebühren:** Bei 100 € kostet eine Order 1 %, ein Kauf mit
+späterem Verkauf also 2 % plus Spread. Damit gewinnt vor allem, wer wenig handelt, und die Qualität der Entscheidungen
+geht im Gebührenrauschen unter. Deshalb:
+- **Live mit 100 €:** für die Geschichte im Dashboard, realistisch für ein Einsteiger-Depot.
+- **Im Replay zusätzlich mit 10.000 €** und denselben absoluten Gebühren (1 € pro Order). Dort wiegen Gebühren nur noch
+  0,01 %, sodass vor allem die Qualität der Entscheidungen zählt.
+- Die Agenten entscheiden in **Anteilen des Depots** (z. B. „20 % in SAP“), damit dieselbe Entscheidung in beiden
+  Depots ausgeführt werden kann. Mindestorder und Risk-Check gelten jeweils in Prozent.
+- Der Report zeigt den Forward-Score für beide Größen nebeneinander. Die Differenz zeigt, wie viel die Gebühren kosten.
+
 Später optional: **Alpaca Paper Trading** (offizielle API, US-Aktien, echte Orderausführung gegen Live-Kurse, kostenlos).
 Ein Konto dafür musst du selbst anlegen. Der Agent spricht das Depot über eine Schnittstelle `Broker` an, deshalb lässt
 sich das eigene Musterdepot später einfach dagegen tauschen.
 
-### 3.4 Steuern pro Trade (deutsches Recht, vereinfacht)
+### 3.4 Steuern pro Trade (deutsches Recht, vereinfacht, in zwei Stufen)
 
-Das Musterdepot führt die Steuer bei jedem Verkauf ab, wie es ein deutscher Broker auch tut. Gerechnet wird nach den
-Regeln für Privatanleger. Die Werte stehen in der Konfiguration und lassen sich für spätere Jahre anpassen.
+Das Musterdepot führt die Steuer bei jedem Verkauf ab, wie es ein deutscher Broker auch tut. Bei 100 € geht es um
+Cent-Beträge. Deshalb wird die Steuer in zwei Stufen gebaut, damit sie den eigentlichen Kern, den Agenten, nicht
+blockiert.
+
+**Stufe 1 (Meilenstein 2):**
 
 | Regel | Umsetzung |
 |---|---|
-| **Abgeltungsteuer** | 25 % auf realisierte Gewinne |
-| **Solidaritätszuschlag** | 5,5 % der Abgeltungsteuer, zusammen also **26,375 %** |
-| **Kirchensteuer** | Optional (8 % oder 9 % je nach Bundesland), standardmäßig aus |
+| **Steuersatz** | Abgeltungsteuer 25 % plus Soli 5,5 % davon, zusammen **26,375 %** auf realisierte Gewinne |
 | **Gewinnermittlung** | **FIFO**: Verkauft wird immer zuerst das älteste Kauf-Lot. Gebühren für Kauf und Verkauf mindern den Gewinn |
-| **Verlusttöpfe** | Zwei Töpfe wie bei deutschen Brokern. Aktienverluste dürfen nur mit Aktiengewinnen verrechnet werden, sonstige Verluste (z. B. aus ETFs) mit allen Gewinnen. Ein späterer Verlust führt zu einer **Steuererstattung** auf bereits gezahlte Steuer im selben Jahr |
-| **Sparer-Pauschbetrag** | Einstellbar, **standardmäßig 0 €**. Mit 100 € Depot würden die 1.000 € Freibetrag sonst praktisch nie überschritten, und es fiele nie Steuer an. Mit 0 € wird gerechnet, als wäre der Freibetrag schon anderweitig verbraucht. So zeigt der Benchmark die Steuerwirkung jedes Trades. |
-| **Dividenden** | Werden gutgeschrieben und sofort mit 26,375 % besteuert. Ausländische Quellensteuer wird im MVP vereinfacht angerechnet |
-| **ETFs** | Teilfreistellung 30 % bei Aktien-ETFs. Die jährliche Vorabpauschale wird erst später eingebaut, weil sie bei einem Depot dieser Größe nur Cent-Beträge ausmacht |
-| **Jahreswechsel** | Verlusttöpfe werden ins nächste Jahr vorgetragen, der Pauschbetrag wird zurückgesetzt |
+| **Verluste** | Ein Verlust erzeugt in Stufe 1 keine Steuer und keine Erstattung. Er wird nur gespeichert, damit Stufe 2 ihn später nachträglich verrechnen kann |
+| **Sparer-Pauschbetrag** | Einstellbar, **standardmäßig 0 €**. Mit 100 € Depot würde der Freibetrag von 1.000 € sonst nie überschritten, und es fiele nie Steuer an |
 
-Jede Order im Depot speichert: realisierten Gewinn oder Verlust, gezahlte bzw. erstattete Steuer und den Stand beider
-Verlusttöpfe danach. Der Agent sieht über `get_portfolio()` seine **Rendite nach Steuern** und den Stand seiner
-Verlusttöpfe. So kann er lernen, dass häufiges Gewinnmitnehmen teurer ist als Halten.
+**Stufe 2 (nach Meilenstein 5, wenn der Agent läuft):**
+
+| Regel | Umsetzung |
+|---|---|
+| **Verlusttöpfe** | Zwei Töpfe wie bei deutschen Brokern: Aktienverluste nur mit Aktiengewinnen verrechenbar, sonstige Verluste mit allen Gewinnen. Ein späterer Verlust führt zu einer **Steuererstattung** auf bereits gezahlte Steuer im selben Jahr |
+| **ETFs** | Teilfreistellung 30 % bei Aktien-ETFs. Die Vorabpauschale kommt erst danach (bei dieser Depotgröße nur Cent-Beträge) |
+| **Dividenden** | Gutschrift, sofort mit 26,375 % besteuert, ausländische Quellensteuer vereinfacht angerechnet |
+| **Kirchensteuer** | Optional (8 % oder 9 %), standardmäßig aus |
+| **Jahreswechsel** | Verlusttöpfe werden vorgetragen, der Pauschbetrag wird zurückgesetzt |
+
+Weil jede Order ihren realisierten Gewinn bzw. Verlust speichert, kann Stufe 2 die Steuern alter Läufe nachträglich
+neu berechnen. Der Agent sieht über `get_portfolio()` seine **Rendite nach Steuern**.
 
 > Das ist eine vereinfachte Nachbildung für den Benchmark, keine Steuerberatung. Sonderfälle wie Kapitalmaßnahmen,
-> Fondsumschichtungen oder ausländische Steuerverfahren bildet das MVP nicht ab.
+> Fondsumschichtungen oder ausländische Steuerverfahren bildet das Projekt nicht ab.
 
-**Tests:** Die Steuerberechnung bekommt eigene Unit-Tests mit von Hand nachgerechneten Beispielen: Gewinn, Verlust,
-Verlustverrechnung über beide Töpfe, Erstattung, Teilverkauf mit FIFO, Jahreswechsel.
+**Tests (Stufe 1):** von Hand nachgerechnete Beispiele für Gewinn, Verlust, Teilverkauf über mehrere Lots (FIFO) und
+Gebühren im Gewinn.
 
 ### 3.5 Takt und Scheduler
 
 - **Takte:** 3× pro Handelstag, z. B. kurz nach Xetra-Eröffnung, mittags und kurz nach US-Eröffnung. Das sind etwa
   60 Entscheidungen pro Monat und Agent. Zum Start reicht das, mehr Takte sind eine Einstellung.
-- Ein Takt läuft so ab: Snapshot bauen und einfrieren, dann beide Agenten **auf demselben Snapshot** entscheiden
-  lassen, dann die Orders ausführen.
+- Ein Takt läuft so ab: Entscheidungs-Snapshot bauen und einfrieren, dann beide Agenten **auf demselben Snapshot**
+  entscheiden lassen, dann die Ausführungs-Kurse abrufen und einfrieren (3.3), dann die Orders zu diesen Kursen ausführen.
 - Gestartet wird über die Windows-Aufgabenplanung oder einen kleinen Daemon (`trading-agent run --schedule`).
 - **Verpasster Takt** (PC aus, Engine nicht erreichbar): wird für **beide** Agenten als „ausgefallen“ geloggt. Damit
   der Vergleich fair bleibt, läuft Opus in dem Fall auch nicht.
@@ -217,12 +258,17 @@ Replay funktioniert. Gerechnet wird nur in Tools, nie im LLM.
 
 - Max. 40 % des Depots in einem Wert. Bei 100 € und 10 € Mindestorder wären 15 % zu eng
 - Max. 3 Orders pro Takt
-- Order ≥ 10 €
+- Order ≥ 10 % des Depotwerts (bei 100 €: 10 €), Regeln in Prozent, damit sie für beide Depotgrößen gelten
 - Cash bleibt ≥ 0, auch nach Gebühren
 - Nur Werte aus der Watchlist
 - Jede Kaufentscheidung braucht mindestens eine Begründung mit Quelle (News-ID oder Indikator)
 
 Verstöße werden abgelehnt, an das Modell zurückgegeben **und gezählt**. Die Anzahl ist eine Benchmark-Metrik.
+
+**Obergrenze für die Schleife:** Gemma ging in allen Tests „all in“. Ohne Grenze würde der Risk-Check endlos
+ablehnen. Deshalb gilt: **Nach höchstens 2 Ablehnungen im selben Takt gilt automatisch „halten“.** Diese Fälle
+werden als eigene Kennzahl **„erzwungenes Halten“** gezählt (Anteil der Takte), getrennt von freiwilligem Halten.
+Für den Forward-Score zählt ein erzwungenes Halten wie Halten (0), es fällt aber im Report auf.
 
 ---
 
@@ -301,9 +347,14 @@ Funktionierender Start (getestet am 18.11.2026):
 3. `CRIT_CORE_STEP_LIBRARY=D:\crit-workspace\build\core\crit_core_steps.dll` setzen
 4. `crit.cli serve` mit dem venv des crit-Repos und Run/Kandidat wie oben starten
 
-**Offen:** Ein dauerhafter Starter (`scripts/start-engine.cmd`) und ein fester Ordner für diesen crit-Stand. Gibt jemand
-den Stash frei (`git stash drop`), lässt sich die Engine nicht mehr starten, deshalb gehört dieser Stand gesichert.
-Auf lange Sicht ist es sauberer, die Engine mit dem aktuellen crit neu zu bauen.
+**Gesichert am 18.11.2026:** Der Stash liegt jetzt zusätzlich als Branch `gemma4-engine` und Tag
+`gemma4-engine-c0014` im crit-Repo. Ein versehentliches `git stash drop` kann den Notbetrieb nicht mehr verhindern.
+
+**Migration auf crit 0.19 (läuft):** Ein Neubau ist nicht nötig. Im neuen Segment (`segment-0005`, `plan-0009`) ist
+`candidate-0017` gebaut: derselbe Code wie candidate-0014, das ungenutzte Plugin `fused-norms` entfällt,
+`topk-router` hat das neue Kernel-Format, und die drei CUDA-Kernels sind neu übersetzt. Noch ausstehend: serve-Check,
+Versiegeln und Messung. Dafür muss der Notbetrieb kurz gestoppt werden. Nebenbefund: Das unveränderte `fused-norms`
+aus crit 0.19 besteht auf diesem Rechner einen Test nicht (`stream_add_norm` FP32), möglicherweise ein crit-Bug.
 
 Laut crit-Doku: `n > 1` wird abgelehnt, deshalb laufen mehrere Antworten als parallele Requests.
 
@@ -316,6 +367,25 @@ Laut crit-Doku: `n > 1` wird abgelehnt, deshalb laufen mehrere Antworten als par
   bewertet wird. Seine Entscheidungen gelten **nicht** als richtig. Sie dienen als Vergleich und als Quelle für die
   Zweitkennzahl „Übereinstimmung“ (Abschnitt 5.3).
 - Tageslimit für die API-Kosten im Runner, bei Überschreitung pausiert der Opus-Agent und es wird geloggt
+
+### 4.2.1 Gleiche Denktiefe für beide Modelle
+
+Gemma hat `enable_thinking` (über `chat_template_kwargs`), Opus hat eigene Reasoning-Einstellungen. Sind sie nicht
+für beide fest eingestellt, vergleicht der Benchmark am Ende Einstellungen statt Modelle. Deshalb:
+
+- **Feste Profile in der Konfiguration** (`configs/models.toml`), versioniert. Ändert sich ein Profil, ist das ein
+  neuer Lauf und kein Teil des alten.
+- **Zwei Profile, beide Modelle jeweils gleich:**
+  - `no_think`: Gemma `enable_thinking=false`, Opus ohne erweitertes Denken
+  - `think`: Gemma `enable_thinking=true`, Opus mit erweitertem Denken. Das Budget an Denk-Tokens wird für beide gleich
+    begrenzt, soweit die Schnittstellen das erlauben (crit: `thinking_budget_tokens`, falls das Paket es meldet;
+    sonst über `max_tokens`).
+- **Standard ist `no_think`.** Das ist billiger und schneller, und die Entscheidungen bleiben vergleichbar knapp.
+  `think` läuft als eigene Stufe im Replay.
+- Ebenfalls fest und dokumentiert: Temperatur, top_p, Seed (wo möglich) und `max_tokens`.
+- **Jede Entscheidung speichert das komplette Profil** (Modell-ID, Engine-Version bzw. crit-Kandidat, Thinking an/aus,
+  Sampling-Werte, Prompt-Version). Der Report gruppiert danach.
+- Die tatsächlich verbrauchten Denk-Tokens werden gemessen und neben Kosten und Latenz gezeigt (5.4).
 
 ### 4.3 Wie Gemma besser entscheiden soll (Stufen)
 
@@ -381,6 +451,8 @@ in Euro und in % des Depots, **nach Gebühren und Steuern**:
   einem 100-€-Depot ein Verlust. Unnötiges Handeln wird so automatisch bestraft.
 - **Auswertung pro Modell und Stufe:** mittlerer Forward-Score pro Entscheidung, Summe über alle Takte, Anteil
   positiver Entscheidungen, jeweils mit Bootstrap-Konfidenzintervall (5.5).
+- **Zwei Depotgrößen:** Forward-Score für 100 € und für 10.000 € (3.3). Bei 10.000 € zählt vor allem die
+  Entscheidungsqualität, die Differenz zu 100 € zeigt die Wirkung der Gebühren.
 - **Ablation L0 bis L5:** Jede Stufe wird am Forward-Score gemessen. Eine Stufe „wirkt“ nur, wenn sie ihn
   verbessert.
 - **Rechenaufwand-gleicher Vergleich:** Gemma L3 mit N Antworten gegen Opus mit einer, bei ähnlicher Wartezeit,
@@ -410,6 +482,8 @@ nur, **wie ähnlich Gemma entscheidet, nicht wie gut**. Deshalb gilt:
 |---|---|
 | Gültige Tool-Aufrufe in %, Schema-Fehler | |
 | Risk-Check-Ablehnungen pro 100 Entscheidungen | |
+| Erzwungenes Halten in % der Takte | Nach 2 Ablehnungen automatisch „halten“ (3.7) |
+| Denk-Tokens pro Entscheidung | nur im Profil `think` (4.2.1) |
 | Begründungen mit gültiger Quelle in % | Erfindet das Modell News? Jede zitierte News-ID wird gegen den Snapshot geprüft. |
 | Latenz pro Takt, Tokens pro Takt | |
 | Kosten pro Takt und pro Monat | Opus: exakt aus der API. Gemma: Strom grob geschätzt aus Laufzeit × GPU-Leistung |
@@ -480,7 +554,7 @@ trading-agent/
 |---|---|---|
 | **0** | **Gemma-Engine prüfen** ✅ | Erledigt am 18.11.2026. Ergebnisse in Abschnitt 4.1.1: kein natives Tool-Calling, also Prompt-Modus mit JSON-Schema. Offen ist noch der dauerhafte Starter (4.1.2). |
 | **1** | **Feeds und Snapshots** ✅ | Erledigt am 18.11.2026: `trading-agent snapshot` holt Kurse (yfinance, USD in EUR umgerechnet) und Google-News-RSS für 15 Werte, ordnet News per Alias zu und friert alles als gzip-JSON mit SHA-256 ein. 30 Tests ohne Netz, u. a. kein Look-ahead bei Kerzen und News, Manipulationsschutz per Hash, Werkzeuge ohne Netzzugriff. Erster Live-Snapshot: 15/15 Kurse, 705 News. Die Relevanz-Sortierung der News ist erledigt, siehe 3.1.1. |
-| **2** | **Musterdepot und Vergleichs-Depots** | Orders mit Bruchstücken, Gebühren, Handelszeiten und Ausführung zum *nächsten* Kurs funktionieren. Die Steuerberechnung (FIFO, beide Verlusttöpfe, Erstattung) besteht die von Hand nachgerechneten Testfälle. Die Vergleichs-Depots laufen. |
+| **2** | **Musterdepot und Vergleichs-Depots** | Orders in Prozent des Depots mit Bruchstücken, Gebühren, Handelszeiten und Ausführung zum gespeicherten Ausführungskurs nach der Entscheidung. Steuern Stufe 1 (26,375 % auf realisierte Gewinne, FIFO) mit von Hand nachgerechneten Tests. Depots mit 100 € und 10.000 €. Die Vergleichs-Depots laufen. |
 | **3** | **Agent mit Fake-LLM** | Der Graph läuft komplett durch inklusive Risk-Check und Journal, die CI ist grün. |
 | **4** | **Beide Modelle anbinden und eine Woche Probebetrieb** | Gemma und Opus handeln 3× täglich. Kosten pro Tag und Ausfallquote sind gemessen, die Opus-Budgetgrenze ist festgelegt. |
 | **5** | **Dashboard** | Equity-Kurven, Entscheidungs-Feed und Positionen sind sichtbar. |
@@ -494,4 +568,6 @@ trading-agent/
 
 > Dieses Projekt ist ein Benchmark für LLM-Agenten. Es handelt ausschließlich mit Spielgeld in einem simulierten
 > Depot, ist keine Anlageberatung und die Ergebnisse sagen nichts darüber aus, ob man mit einer Strategie echtes Geld
-> verdienen kann. News werden nur als Titel, Anriss und Link gespeichert.
+> verdienen kann. News werden nur als Titel, Anriss und Link gespeichert. Kurse kommen über `yfinance`, eine
+> inoffizielle Schnittstelle zu Yahoo Finance. Sie ist für private Projekte üblich, aber nicht offiziell freigegeben.
+> Für eine öffentliche oder kommerzielle Nutzung sollte ein Kursanbieter mit offizieller API verwendet werden.

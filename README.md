@@ -74,3 +74,8 @@ beider Modelle → Dashboard → Replay-Benchmark. Details und Messergebnisse st
 Dieses Projekt ist ein Benchmark für LLM-Agenten. Es handelt ausschließlich mit Spielgeld in einem simulierten
 Depot. Es ist keine Anlageberatung, und die Ergebnisse sagen nichts darüber aus, ob man mit einer Strategie echtes
 Geld verdienen kann. Die Steuerberechnung ist eine vereinfachte Nachbildung, keine Steuerberatung.
+
+Kurse kommen über [`yfinance`](https://github.com/ranaroussi/yfinance), eine inoffizielle Schnittstelle zu Yahoo
+Finance. Sie ist für private Projekte üblich, aber nicht von Yahoo freigegeben, und Kurse sind je nach Börse
+verzögert (Xetra rund 15 Minuten). Jeder Snapshot speichert deshalb den Zeitpunkt des Kurses an der Börse. Für eine
+kommerzielle Nutzung wäre ein Kursanbieter mit offizieller API nötig.

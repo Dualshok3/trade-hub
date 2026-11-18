@@ -31,13 +31,18 @@ class Bar:
 
 @dataclass(frozen=True)
 class Quote:
-    """Letzter bekannter Kurs in der Handelswährung des Werts. `as_of` ist UTC (ISO 8601)."""
+    """Letzter bekannter Kurs in der Handelswährung des Werts.
+
+    `as_of` ist der Zeitpunkt des Kurses an der Börse (UTC, ISO 8601), nicht der Abrufzeitpunkt.
+    yfinance liefert je nach Börse verzögerte Kurse; `fetched_at` hält fest, wann abgerufen wurde.
+    """
 
     symbol: str
     price: float
     previous_close: float | None
     currency: str
     as_of: str
+    fetched_at: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -103,23 +108,61 @@ class YFinanceProvider:
                 out[symbol] = bars
         return out
 
+    def _last_minute_bars(self, symbols: list[str]) -> dict[str, tuple[float, str]]:
+        """Letzte Minutenkerze je Symbol: (Schlusskurs, Zeitpunkt der Kerze an der Börse in UTC)."""
+        import yfinance as yf
+
+        frame = yf.download(
+            symbols,
+            period="5d",
+            interval="1m",
+            group_by="ticker",
+            auto_adjust=False,
+            prepost=False,
+            progress=False,
+            threads=True,
+        )
+        out = {}
+        for symbol in symbols:
+            try:
+                closes = (frame[symbol] if len(symbols) > 1 else frame)["Close"].dropna()
+            except KeyError:
+                continue
+            if closes.empty:
+                continue
+            ts = closes.index[-1]
+            ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+            out[symbol] = (float(closes.iloc[-1]), ts.to_pydatetime().replace(microsecond=0).isoformat())
+        return out
+
     def quotes(self, symbols: list[str]) -> dict[str, Quote]:
         import yfinance as yf
 
-        now = datetime.now(UTC).replace(microsecond=0).isoformat()
+        fetched = datetime.now(UTC).replace(microsecond=0).isoformat()
+        try:
+            minute = self._last_minute_bars(symbols)
+        except Exception as e:  # yfinance wirft sehr unterschiedliche Fehler
+            log.warning("Minutenkurse fehlgeschlagen: %s", e)
+            minute = {}
         out: dict[str, Quote] = {}
         for symbol in symbols:
             try:
                 info = yf.Ticker(symbol).fast_info
-                price = _clean(info["last_price"])
                 prev = _clean(info["previous_close"])
-                currency = info["currency"]
-            except Exception as e:  # yfinance wirft sehr unterschiedliche Fehler
+                currency = str(info["currency"]).upper()
+                fallback = _clean(info["last_price"])
+            except Exception as e:
                 log.warning("kein Kurs für %s: %s", symbol, e)
                 continue
-            if price is None:
+            if symbol in minute:
+                price, as_of = minute[symbol]
+            elif fallback is not None:
+                # ohne Minutenkerze ist der Kurszeitpunkt unbekannt: leer lassen,
+                # statt den Abrufzeitpunkt als Kurszeit auszugeben
+                price, as_of = fallback, ""
+            else:
                 continue
-            out[symbol] = Quote(symbol, price, prev, str(currency).upper(), now)
+            out[symbol] = Quote(symbol, price, prev, currency, as_of, fetched)
         return out
 
 

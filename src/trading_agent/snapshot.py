@@ -64,11 +64,19 @@ def build_snapshot(
             errors.append(f"{asset.id}: kein Kurs")
         elif q.currency != asset.currency:
             errors.append(f"{asset.id}: Kurs in {q.currency}, erwartet {asset.currency}")
+        elif q.as_of and datetime.fromisoformat(q.as_of) > now:
+            errors.append(f"{asset.id}: Kurszeit {q.as_of} liegt nach dem Snapshot")  # Look-ahead-Schutz
         else:
             rate = 1.0 if asset.currency == "EUR" else (1 / eurusd if eurusd else None)
+            delay = None
+            if q.as_of:
+                delay = round((now - datetime.fromisoformat(q.as_of)).total_seconds() / 60, 1)
+            else:
+                errors.append(f"{asset.id}: Kurszeit unbekannt")
             quotes[asset.id] = {
                 **q.to_dict(),
                 "price_eur": round(q.price * rate, 6) if rate else None,
+                "age_minutes": delay,  # Alter des Kurses zum Snapshot-Zeitpunkt (verzögert oder Börse zu)
             }
         bars = [b.to_dict() for b in raw_history.get(asset.symbol, []) if b.date <= today]
         if not bars:

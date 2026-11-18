@@ -5,6 +5,8 @@ import pytest
 
 from trading_agent.snapshot import SnapshotError, digest, load_snapshot, save_snapshot, snapshot_path
 
+from .conftest import NOW
+
 
 def test_snapshot_contents(snapshot):
     assert snapshot["taken_at"] == "2026-11-18T10:30:00+00:00"
@@ -62,7 +64,7 @@ def test_missing_quote_and_fx_are_reported(watchlist, provider):
     from trading_agent.snapshot import build_snapshot
 
     quotes = {k: v for k, v in provider._quotes.items() if k not in ("EURUSD=X", "EXS1.DE")}
-    snap = build_snapshot(watchlist, StaticProvider(quotes, provider._history))
+    snap = build_snapshot(watchlist, StaticProvider(quotes, provider._history), now=NOW)
     assert any("Wechselkurs" in e for e in snap["errors"])
     assert any(e.startswith("DAX: kein Kurs") for e in snap["errors"])
     assert snap["quotes"]["AAPL"]["price_eur"] is None
@@ -74,6 +76,38 @@ def test_currency_mismatch_is_reported(watchlist, provider):
 
     quotes = dict(provider._quotes)
     quotes["SAP.DE"] = Quote("SAP.DE", 270.0, 260.0, "USD", "x")
-    snap = build_snapshot(watchlist, StaticProvider(quotes, provider._history))
+    snap = build_snapshot(watchlist, StaticProvider(quotes, provider._history), now=NOW)
     assert "SAP" not in snap["quotes"]
     assert any("SAP: Kurs in USD" in e for e in snap["errors"])
+
+
+def test_quote_time_and_age(snapshot):
+    q = snapshot["quotes"]["SAP"]
+    assert q["as_of"] == "2026-11-18T10:30:00+00:00"
+    assert q["age_minutes"] == 0.0
+
+
+def test_quote_from_future_is_rejected(watchlist, provider):
+    from trading_agent.feeds.prices import Quote, StaticProvider
+    from trading_agent.snapshot import build_snapshot
+
+    from .conftest import NOW
+
+    quotes = dict(provider._quotes)
+    quotes["SAP.DE"] = Quote("SAP.DE", 251.0, 240.0, "EUR", "2026-11-18T10:45:00+00:00")
+    snap = build_snapshot(watchlist, StaticProvider(quotes, provider._history), now=NOW)
+    assert "SAP" not in snap["quotes"]
+    assert any("liegt nach dem Snapshot" in e for e in snap["errors"])
+
+
+def test_unknown_quote_time_is_reported(watchlist, provider):
+    from trading_agent.feeds.prices import Quote, StaticProvider
+    from trading_agent.snapshot import build_snapshot
+
+    from .conftest import NOW
+
+    quotes = dict(provider._quotes)
+    quotes["SAP.DE"] = Quote("SAP.DE", 251.0, 240.0, "EUR", "")
+    snap = build_snapshot(watchlist, StaticProvider(quotes, provider._history), now=NOW)
+    assert snap["quotes"]["SAP"]["age_minutes"] is None
+    assert "SAP: Kurszeit unbekannt" in snap["errors"]
