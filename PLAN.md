@@ -369,11 +369,25 @@ Funktionierender Start (getestet am 18.11.2026):
 **Gesichert am 18.11.2026:** Der Stash liegt jetzt zusätzlich als Branch `gemma4-engine` und Tag
 `gemma4-engine-c0014` im crit-Repo. Ein versehentliches `git stash drop` kann den Notbetrieb nicht mehr verhindern.
 
-**Migration auf crit 0.19 (läuft):** Ein Neubau ist nicht nötig. Im neuen Segment (`segment-0005`, `plan-0009`) ist
-`candidate-0017` gebaut: derselbe Code wie candidate-0014, das ungenutzte Plugin `fused-norms` entfällt,
-`topk-router` hat das neue Kernel-Format, und die drei CUDA-Kernels sind neu übersetzt. Noch ausstehend: serve-Check,
-Versiegeln und Messung. Dafür muss der Notbetrieb kurz gestoppt werden. Nebenbefund: Das unveränderte `fused-norms`
-aus crit 0.19 besteht auf diesem Rechner einen Test nicht (`stream_add_norm` FP32), möglicherweise ein crit-Bug.
+**Start im Notbetrieb:** `scripts/start-engine.ps1` entpackt den Tag `gemma4-engine-c0014` einmalig nach
+`%LOCALAPPDATA%\crit-gemma-runtime` und startet candidate-0014 auf Port 8000 (getestet am 18.11.2026, 96 tok/s).
+
+**Migration auf crit 0.19 (blockiert, Entscheidung offen):** Ein Neubau ist nicht nötig. `candidate-0017` (neues
+Segment `segment-0005`, `plan-0009`) ist derselbe Code wie candidate-0014. Das ungenutzte Plugin `fused-norms`
+entfällt, `topk-router` hat das neue Kernel-Format. Alle Plugin-Tests und Serving-Checks bestehen. Er ist aber
+**nicht versiegelt**, weil zwei in crit 0.19 neue Checks über den vollen Kontext von 200.000 Tokens scheitern:
+- `full_context_prompt_step`: Der langsamste Prompt-Schritt braucht 1,062 s, erlaubt ist 1 s. Ein Abbruch wirkt
+  nur zwischen Schritten.
+- `full_context_device_memory`: Bei voller Belegung bleiben 0,09 GiB (Decode) bzw. −0,06 GiB (Prompt) frei,
+  verlangt ist 1 GiB Reserve. Der localrag-Dienst belegte dabei rund 0,7 GB.
+Das liegt nicht an der Migration. candidate-0014 wurde unter 0.17 nur nie gegen diese Checks gemessen. Mögliche
+Wege: (a) kleinere Prefill-Stücke und weniger Speicher an der Spitze als Korrektur im selben Plan, das ist echte
+Engine-Arbeit; (b) Kontext für die Engine kleiner wählen, z. B. 128k statt 200k, was für den Agenten reicht;
+(c) beim Notbetrieb bleiben.
+
+**Nebenbefund für crit-labs:** Das unveränderte `fused-norms` aus crit 0.19 besteht auf diesem Rechner einen Test
+nicht: Bei FP32-Streams mit Gewichten pro Stream weicht die Norm-Ausgabe um bis zu 3 ULP ab. Ein Bugreport-Entwurf
+liegt in `crit/drafts/fused-norms-stream-add-norm-fp32.md` und ist noch nicht abgeschickt.
 
 Laut crit-Doku: `n > 1` wird abgelehnt, deshalb laufen mehrere Antworten als parallele Requests.
 
