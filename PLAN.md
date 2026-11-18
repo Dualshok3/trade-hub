@@ -394,17 +394,29 @@ für beide fest eingestellt, vergleicht der Benchmark am Ende Einstellungen stat
 
 - **Feste Profile in der Konfiguration** (`configs/models.toml`), versioniert. Ändert sich ein Profil, ist das ein
   neuer Lauf und kein Teil des alten.
-- **Zwei Profile, beide Modelle jeweils gleich:**
-  - `no_think`: Gemma `enable_thinking=false`, Opus ohne erweitertes Denken
-  - `think`: Gemma `enable_thinking=true`, Opus mit erweitertem Denken. Das Budget an Denk-Tokens wird für beide gleich
-    begrenzt, soweit die Schnittstellen das erlauben (crit: `thinking_budget_tokens`, falls das Paket es meldet;
-    sonst über `max_tokens`).
-- **Standard ist `no_think`.** Das ist billiger und schneller, und die Entscheidungen bleiben vergleichbar knapp.
-  `think` läuft als eigene Stufe im Replay.
-- Ebenfalls fest und dokumentiert: Temperatur, top_p, Seed (wo möglich) und `max_tokens`.
+- **Wichtig: Völlig gleich geht nicht.** Claude Opus 5.5 kann Thinking **nicht abschalten** (`thinking: disabled`
+  gibt HTTP 400). Gesteuert wird nur über `output_config.effort` (`low` bis `max`, Standard `medium`). Temperatur,
+  top_p und top_k lehnt Opus 5.5 ebenfalls ab. Gemma über crit kann Thinking an- und abschalten und Sampling fest
+  einstellen. Die Profile legen deshalb je Modell fest, was „vergleichbar“ heißt, und schreiben die verbleibenden
+  Unterschiede in jeden Report.
+- **Profile** (in `harness-it-all/configs/profiles.toml`, siehe 4.2.2):
+  - `minimal`: Gemma `enable_thinking=false`, Temperatur 0, Seed 7; Opus `effort=low` (denkt trotzdem adaptiv)
+  - `think`: Gemma `enable_thinking=true`, Temperatur 0, Seed 7; Opus `effort=medium`
+  - `vote`: nur für Self-Consistency mit Gemma (Temperatur 1,0), Opus streut nur über das adaptive Denken
+- **Standard ist `minimal`.** `think` läuft als eigene Stufe im Replay.
+- **Serverseitige Fallbacks bei Opus:** Lehnt Opus eine Anfrage ab, kann der Server sie automatisch an ein anderes
+  Modell geben. Für den Benchmark wird `model_served` gespeichert. Antworten, bei denen ein Fallback griff, zählen
+  nicht in den Forward-Score-Vergleich und erscheinen getrennt im Report.
+- Ebenfalls fest und dokumentiert: Temperatur, top_p, Seed (nur Gemma) und `max_tokens`.
 - **Jede Entscheidung speichert das komplette Profil** (Modell-ID, Engine-Version bzw. crit-Kandidat, Thinking an/aus,
   Sampling-Werte, Prompt-Version). Der Report gruppiert danach.
 - Die tatsächlich verbrauchten Denk-Tokens werden gemessen und neben Kosten und Latenz gezeigt (5.4).
+
+### 4.2.2 Gemeinsame Harness: harness-it-all
+
+Modell-Adapter, Profile, Aufzeichnung, Replay, Block-Bootstrap und Report liegen in einem eigenen Repo,
+[harness-it-all](https://github.com/Dualshok3/harness-it-all). trade-hub nutzt es als Abhängigkeit, localRAG später
+auch. In trade-hub bleibt die Fachlogik: Snapshots, Musterdepot, Forward-Score als Scorer und die Vergleichs-Depots.
 
 ### 4.3 Wie Gemma besser entscheiden soll (Stufen)
 

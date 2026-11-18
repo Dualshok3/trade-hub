@@ -1,6 +1,6 @@
-# Trading-Agent
+# trade-hub
 
-[![CI](https://github.com/Dualshok3/Trading-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Dualshok3/Trading-Agent/actions/workflows/ci.yml)
+[![CI](https://github.com/Dualshok3/trade-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/Dualshok3/trade-hub/actions/workflows/ci.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green)](LICENSE)
 
@@ -55,7 +55,7 @@ Gespeichert: data\snapshots\2026-11-18\091944Z-2ce20b33117e.json.gz
 Voraussetzung: [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone git@github.com:Dualshok3/Trading-Agent.git && cd Trading-Agent
+git clone git@github.com:Dualshok3/trade-hub.git && cd trade-hub
 uv sync
 uv run trading-agent snapshot            # Live-Kurse + News einfrieren
 uv run trading-agent list                # gespeicherte Snapshots

@@ -20,7 +20,7 @@ from trading_agent.config import Watchlist
 log = logging.getLogger(__name__)
 
 SNIPPET_CHARS = 300
-USER_AGENT = "trading-agent/0.1 (+https://github.com/Dualshok3/Trading-Agent)"
+USER_AGENT = "trading-agent/0.1 (+https://github.com/Dualshok3/trade-hub)"
 
 
 @dataclass(frozen=True)
