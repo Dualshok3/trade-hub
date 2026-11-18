@@ -107,6 +107,22 @@ class SnapshotTools:
         self._asset(asset_id)
         return self.ranker.for_asset(asset_id, hours, limit)
 
+    def news_context(self, asset_ids: list[str], hours: float = 24, limit: int = 5) -> dict:
+        """Was der Agent an News sieht, samt Herkunft: Version der Regeln und IDs der gezeigten Meldungen.
+
+        Die Sortierung läuft beim Lesen, deshalb muss jede Live-Entscheidung festhalten, welche Meldungen sie
+        tatsächlich gesehen hat. Dieses Dict wird mit der Entscheidung gespeichert."""
+        per_asset = {a: self.get_top_news(a, hours, limit) for a in asset_ids}
+        market = self.get_market_news(hours, limit)
+        return {
+            "news_rank_version": self.ranker.rules.version,
+            "snapshot": self.s["hash"],
+            "shown_ids": {a: [n["id"] for n in items] for a, items in per_asset.items()}
+            | {"_market": [n["id"] for n in market]},
+            "per_asset": per_asset,
+            "market": market,
+        }
+
     def get_market_news(self, hours: float = 24, limit: int = 5) -> list[dict]:
         """Die relevantesten marktweiten Meldungen (Zinsen, Inflation, Indizes)."""
         return self.ranker.market(hours, limit)

@@ -17,6 +17,7 @@ Relevanz einer Meldung für einen Wert:
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 import tomllib
@@ -61,6 +62,9 @@ class Rules:
     half_life_hours: float
     cluster_jaccard: float
     macro: re.Pattern
+    version: str = (
+        ""  # SHA-256 der Regeldatei (die ersten 12 Zeichen), wird bei jeder Entscheidung gespeichert
+    )
 
 
 def _rx(patterns: list[str]) -> tuple[re.Pattern, ...]:
@@ -68,7 +72,8 @@ def _rx(patterns: list[str]) -> tuple[re.Pattern, ...]:
 
 
 def load_rules(path: Path | str = DEFAULT_RULES) -> Rules:
-    d = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    raw = Path(path).read_bytes()
+    d = tomllib.loads(raw.decode("utf-8"))
     sources = {}
     for weight_name, names in d["sources"].items():
         weight = d["source_weights"][weight_name]
@@ -85,6 +90,7 @@ def load_rules(path: Path | str = DEFAULT_RULES) -> Rules:
         half_life_hours=d["scoring"]["half_life_hours"],
         cluster_jaccard=d["scoring"]["cluster_jaccard"],
         macro=re.compile(r"(?<!\w)(?:" + "|".join(d["macro"]["words"]) + r")(?!\w)", re.IGNORECASE),
+        version=hashlib.sha256(raw).hexdigest()[:12],
     )
 
 

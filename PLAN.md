@@ -129,6 +129,15 @@ der Watchlist. Pro Wert stehen jetzt echte Ereignisse oben, z. B. Siemens „erh
 sell“, Nvidia „beats forecasts“, JPMorgan „names new CFO“. Vorher standen dort Analystenmeldungen über andere
 Firmen. 37 Tests decken Zuordnung, Rauschen, Bündelung und Sortierung ab.
 
+**Was der Agent gesehen hat, wird gespeichert.** Für Replay-Experimente ist es ein Vorteil, dass die Sortierung beim
+Lesen läuft und bessere Regeln auch für alte Snapshots gelten. Bei Live-Entscheidungen muss man aber später wissen,
+welche Meldungen der Agent tatsächlich gesehen hat. Deshalb speichert jede Entscheidung über
+`SnapshotTools.news_context()`:
+- `news_rank_version`, die ersten 12 Zeichen des SHA-256 von `configs/news_rank.toml`
+- die IDs der gezeigten Meldungen je Wert und für den Marktteil
+Ein Replay kann damit wahlweise die damals gezeigten Meldungen verwenden oder die mit den aktuellen Regeln. Beim
+Reranker kommen Modellname und Version dazu (umgesetzt am 18.11.2026).
+
 **Nächste Ausbaustufe: Reranker aus LocalRAG.** Das RAG-Projekt hat mit `bge-reranker-v2-m3` schon einen fertigen
 Cross-Encoder (`localrag/retrieval/reranker.py`). Er bewertet Frage und Text gemeinsam und kann die Kandidaten nach
 den festen Regeln neu sortieren, mit einer Frage wie „Ist diese Meldung kursrelevant für SAP?“. Ablauf: Die Regeln
@@ -168,8 +177,12 @@ Orders ausführen kann, muss auch der Kurs gespeichert sein, zu dem ausgeführt 
    für **alle** Werte der Watchlist, nicht nur die gehandelten. So kann ein Replay auch Orders ausführen, die live
    niemand gegeben hat. Gespeichert als eigene Datei mit Verweis auf den Hash des Entscheidungs-Snapshots.
 
-Ist der Ausführungskurs nicht neuer als der Entscheidungskurs (Börse zu, Kurs verzögert), wartet die Order bis zum
-nächsten Takt und wird dort zu dessen Ausführungskurs abgerechnet. Der Replay macht exakt dasselbe.
+**Warten auf einen neueren Kurs:** Xetra-Kurse sind bei yfinance rund 15 Minuten alt, die Entscheidungen dauern nur
+Sekunden bis Minuten. Ein direkt danach abgerufener Ausführungskurs hätte oft denselben Zeitstempel wie der Kurs im
+Snapshot. Deshalb fragt der Takt die Ausführungskurse **jede Minute neu ab, bis jeder Wert an einer offenen Börse einen
+neueren Kurs hat als im Snapshot, höchstens 20 Minuten lang**. Erst danach wartet eine Order bis zum nächsten Takt
+und wird dort zu dessen Ausführungskurs abgerechnet. Nach 3 Takten ohne Ausführung verfällt sie. Eingefroren werden
+die Ausführungskurse, mit denen tatsächlich ausgeführt wurde, und der Replay macht exakt dasselbe.
 
 **Kurszeitpunkt statt Abrufzeitpunkt:** yfinance liefert je nach Börse verzögerte Kurse. Gemessen am 18.11.2026:
 Xetra-Kurse waren rund **15 Minuten alt**, US-Kurse außerhalb der Handelszeit vom Vorabend. Jeder Kurs speichert
@@ -264,6 +277,12 @@ Replay funktioniert. Gerechnet wird nur in Tools, nie im LLM.
 - Jede Kaufentscheidung braucht mindestens eine Begründung mit Quelle (News-ID oder Indikator)
 
 Verstöße werden abgelehnt, an das Modell zurückgegeben **und gezählt**. Die Anzahl ist eine Benchmark-Metrik.
+
+**Bewusste Entscheidung: grobe Schritte.** Mindestorder 10 % und höchstens 40 % pro Wert bedeuten, dass der
+Agent nur in groben Schritten handeln kann: höchstens etwa 4 bis 9 Positionen, Umschichtungen in 10-%-Stufen.
+Das ist **gewollt und kein Versehen.** Bei 100 € wäre eine kleinere Mindestorder wegen 1 € Gebühr unsinnig, und weil
+alle Regeln in Prozent gelten, handeln beide Depotgrößen und beide Modelle unter exakt denselben Bedingungen. Feine
+Gewichtungen sind damit nicht messbar. Wer das später ändert, startet einen neuen Vergleich.
 
 **Obergrenze für die Schleife:** Gemma ging in allen Tests „all in“. Ohne Grenze würde der Risk-Check endlos
 ablehnen. Deshalb gilt: **Nach höchstens 2 Ablehnungen im selben Takt gilt automatisch „halten“.** Diese Fälle
@@ -434,12 +453,12 @@ Marktsituationen**. Weil die Snapshots eingefroren sind, kennt man später die K
 jede Entscheidung daran messen, was sie tatsächlich gebracht hätte.
 
 **Forward-Score einer Entscheidung** = Ergebnis der Order nach *h* Handelstagen **minus** Ergebnis von „nichts tun“,
-in Euro und in % des Depots, **nach Gebühren und Steuern**:
+in Euro und in % des Depots, **nach Gebühren, aber ohne Steuern**:
 
 | Entscheidung | Ergebnis nach *h* Tagen |
 |---|---|
 | Kauf für *x* € | *x* × (Rendite des Werts − Rendite des Vergleichsmarkts) − Gebühr |
-| Verkauf für *x* € | *x* × (Rendite des Vergleichsmarkts − Rendite des Werts) − Gebühr − Steuer auf den realisierten Gewinn |
+| Verkauf für *x* € | *x* × (Rendite des Vergleichsmarkts − Rendite des Werts) − Gebühr |
 | Halten | 0, denn das ist die Nulllinie |
 
 - **Horizonte:** 1, 5 und 20 Handelstage. Haupthorizont ist **5 Tage**. 1 Tag ist vor allem Rauschen, 20 Tage
@@ -447,8 +466,14 @@ in Euro und in % des Depots, **nach Gebühren und Steuern**:
 - **Vergleichsmarkt:** das gleichgewichtete Watchlist-Depot. So zählt nur, ob der gewählte Wert besser lief als die
   Alternativen, nicht ob der Gesamtmarkt gerade steigt. Ein Agent, der in einer Hausse einfach alles kauft, bekommt
   dafür keine Punkte.
-- **Kosten zählen mit:** Gebühren und Steuern gehen ein. Eine Order, die 0,5 % bringt und 1 € Gebühr kostet, ist bei
-  einem 100-€-Depot ein Verlust. Unnötiges Handeln wird so automatisch bestraft.
+- **Gebühren zählen mit:** Eine Order, die 0,5 % bringt und 1 € Gebühr kostet, ist bei einem 100-€-Depot ein
+  Verlust. Unnötiges Handeln wird so automatisch bestraft.
+- **Steuern bleiben draußen:** Ein Verkauf zahlt die Steuer auf den Gewinn sofort. Halten zahlt sie aber auch,
+  nur später, weil der Pauschbetrag auf 0 € steht. Der Verkauf zieht die Steuer also nur nach vorne. Würde man sie
+  beim Verkauf voll abziehen und beim Halten gar nicht, schnitten Verkäufe systematisch schlechter ab. Deshalb enthält
+  der Forward-Score über 5 Tage **keine Steuern**. Die Steuern stehen getrennt in der Depotwertung (5.1), dort mit
+  echter Wirkung auf Cash und Rendite. Die Alternative wäre, für Halten eine latente Steuer auf den unrealisierten
+  Gewinn anzusetzen. Das wird erst geprüft, wenn Stufe 2 der Steuern steht.
 - **Auswertung pro Modell und Stufe:** mittlerer Forward-Score pro Entscheidung, Summe über alle Takte, Anteil
   positiver Entscheidungen, jeweils mit Bootstrap-Konfidenzintervall (5.5).
 - **Zwei Depotgrößen:** Forward-Score für 100 € und für 10.000 € (3.3). Bei 10.000 € zählt vor allem die
@@ -491,8 +516,15 @@ nur, **wie ähnlich Gemma entscheidet, nicht wie gut**. Deshalb gilt:
 ### 5.5 Statistik
 
 - Gepaarter Vergleich, weil beide Agenten auf denselben Snapshots entscheiden
-- Bootstrap-Konfidenzintervalle für jede Kennzahl im Report
-- Im Report steht immer, auf wie vielen Takten eine Zahl beruht
+- **Block-Bootstrap statt Bootstrap über einzelne Entscheidungen:** Die 5-Tage-Fenster des Forward-Scores
+  überlappen sich, und die drei Takte eines Tages hängen an derselben Nachrichtenlage. Einzelne Entscheidungen
+  sind also nicht unabhängig, und ein normaler Bootstrap würde die Konfidenzintervalle zu eng machen. Gezogen werden
+  deshalb **ganze Handelswochen** als Blöcke, mindestens so lang wie der Haupthorizont von 5 Tagen. Ganze
+  Handelstage dienen nur als Gegenprobe. Sind die Intervalle mit Tagesblöcken deutlich enger als mit Wochenblöcken,
+  ist das ein Zeichen, dass die Abhängigkeit über den Tag hinausreicht.
+- Gezogen wird gepaart: Ein Block enthält die Entscheidungen beider Modelle aus derselben Woche.
+- Im Report steht immer, auf wie vielen Takten und wie vielen Blöcken eine Zahl beruht. Bei weniger als etwa
+  8 Wochenblöcken gilt ein Ergebnis nur als vorläufig.
 
 ---
 
@@ -554,7 +586,7 @@ trading-agent/
 |---|---|---|
 | **0** | **Gemma-Engine prüfen** ✅ | Erledigt am 18.11.2026. Ergebnisse in Abschnitt 4.1.1: kein natives Tool-Calling, also Prompt-Modus mit JSON-Schema. Offen ist noch der dauerhafte Starter (4.1.2). |
 | **1** | **Feeds und Snapshots** ✅ | Erledigt am 18.11.2026: `trading-agent snapshot` holt Kurse (yfinance, USD in EUR umgerechnet) und Google-News-RSS für 15 Werte, ordnet News per Alias zu und friert alles als gzip-JSON mit SHA-256 ein. 30 Tests ohne Netz, u. a. kein Look-ahead bei Kerzen und News, Manipulationsschutz per Hash, Werkzeuge ohne Netzzugriff. Erster Live-Snapshot: 15/15 Kurse, 705 News. Die Relevanz-Sortierung der News ist erledigt, siehe 3.1.1. |
-| **2** | **Musterdepot und Vergleichs-Depots** | Orders in Prozent des Depots mit Bruchstücken, Gebühren, Handelszeiten und Ausführung zum gespeicherten Ausführungskurs nach der Entscheidung. Steuern Stufe 1 (26,375 % auf realisierte Gewinne, FIFO) mit von Hand nachgerechneten Tests. Depots mit 100 € und 10.000 €. Die Vergleichs-Depots laufen. |
+| **2** | **Musterdepot und Vergleichs-Depots** ✅ | Erledigt am 18.11.2026: Depot als Ereignisprotokoll in SQLite (`depot.py`, `store.py`), Orders in Prozent des Depots mit Bruchstücken, 1 € Gebühr und 0,1 % halbem Spread, Ausführung nur zu einem neueren, eingefrorenen Ausführungskurs (bis zu 20 Minuten Neuabfrage, sonst Warten bis zum nächsten Takt, Verfall nach 3 Takten). Steuern Stufe 1 (26,375 %, FIFO, Gebühren mindern den Gewinn, Pauschbetrag einstellbar). Fünf Vergleichs-Depots: `cash`, `hold-msciw`, `eq-etfs`, `sma-trend`, `random`. `trading-agent tick` und `trading-agent depots`. 25 neue Tests, darunter von Hand nachgerechnete Steuerbeispiele. |
 | **3** | **Agent mit Fake-LLM** | Der Graph läuft komplett durch inklusive Risk-Check und Journal, die CI ist grün. |
 | **4** | **Beide Modelle anbinden und eine Woche Probebetrieb** | Gemma und Opus handeln 3× täglich. Kosten pro Tag und Ausfallquote sind gemessen, die Opus-Budgetgrenze ist festgelegt. |
 | **5** | **Dashboard** | Equity-Kurven, Entscheidungs-Feed und Positionen sind sichtbar. |

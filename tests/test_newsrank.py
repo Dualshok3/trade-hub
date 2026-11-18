@@ -177,3 +177,14 @@ def test_old_snapshots_get_new_matching(snapshot):
     from trading_agent.tools import SnapshotTools
 
     assert [n["id"] for n in SnapshotTools(snapshot).get_top_news("SAP")] == ["N1"]
+
+
+def test_rules_have_version_and_context_records_shown_ids(snapshot):
+    from trading_agent.tools import SnapshotTools
+
+    assert len(RULES.version) == 12
+    ctx = SnapshotTools(snapshot).news_context(["SAP", "AAPL"])
+    assert ctx["news_rank_version"] == RULES.version
+    assert ctx["snapshot"] == snapshot["hash"]
+    assert ctx["shown_ids"]["SAP"] == ["N1"] and ctx["shown_ids"]["AAPL"] == ["N2"]
+    assert "_market" in ctx["shown_ids"]

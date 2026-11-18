@@ -1,0 +1,20 @@
+# Regeln des Musterdepots. Gelten für alle Depots (Agenten und Vergleichs-Depots) gleich.
+
+[fees]
+per_order_eur = 1.0        # Ordergebühr wie bei gängigen Neobrokern
+half_spread = 0.001        # 0,1 % Aufschlag beim Kauf, Abschlag beim Verkauf
+
+[orders]
+min_order_pct = 0.10       # Mindestorder in Anteil des Depotwerts (bei 100 €: 10 €)
+pending_max_ticks = 3      # Wartende Orders verfallen nach so vielen Takten
+
+[tax]
+# Stufe 1: Abgeltungsteuer 25 % + Soli 5,5 % davon auf realisierte Gewinne, FIFO.
+# Verlusttöpfe, Erstattung, Teilfreistellung und Kirchensteuer folgen in Stufe 2.
+rate = 0.26375
+allowance_eur = 0.0        # Sparer-Pauschbetrag pro Jahr; 0 = als schon anderweitig verbraucht rechnen
+
+[sizes]
+# Live läuft mit 100 €. Im Replay zusätzlich 10.000 € mit denselben Gebühren (Gebühren vs. Entscheidungsqualität).
+live_eur = 100.0
+replay_eur = [100.0, 10000.0]

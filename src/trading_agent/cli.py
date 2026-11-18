@@ -1,4 +1,4 @@
-"""Kommandozeile: `trading-agent snapshot`, `trading-agent show`, `trading-agent list`."""
+"""Kommandozeile: snapshot, show, list, news, tick, depots."""
 
 from __future__ import annotations
 
@@ -112,6 +112,100 @@ def list_cmd(root: Path = typer.Option(DEFAULT_DIR, help="Snapshot-Ordner")) -> 
     """Alle gespeicherten Snapshots auflisten."""
     for p in list_snapshots(root):
         console.print(str(p))
+
+
+def _fill_ready(snap: dict, fill: dict) -> bool:
+    """Ausführungskurse sind brauchbar, wenn jeder Wert an einer offenen Börse einen neueren Kurs hat."""
+    from datetime import datetime
+
+    open_ex = set(snap["open_exchanges"])
+    for a in snap["watchlist"]:
+        if a["exchange"] not in open_ex:
+            continue
+        seen = snap["quotes"].get(a["id"], {}).get("as_of")
+        now = fill["quotes"].get(a["id"], {}).get("as_of")
+        if seen and (not now or datetime.fromisoformat(now) <= datetime.fromisoformat(seen)):
+            return False
+    return True
+
+
+@app.command()
+def tick(
+    watchlist: Path = typer.Option(DEFAULT_WATCHLIST, help="Watchlist (TOML)"),
+    out: Path = typer.Option(DEFAULT_DIR, help="Snapshot-Ordner"),
+    db: Path = typer.Option(Path("data") / "depots.sqlite", help="Depot-Datenbank"),
+    start_eur: float = typer.Option(None, help="Startkapital (Standard: live_eur aus configs/depot.toml)"),
+    wait: int = typer.Option(1200, help="Höchstens so viele Sekunden auf neuere Ausführungskurse warten"),
+    no_news: bool = typer.Option(False, help="Ohne News"),
+) -> None:
+    """Ein Live-Takt: Snapshot einfrieren, Depots entscheiden lassen, zu neueren Kursen ausführen."""
+    import time
+    import tomllib
+
+    from trading_agent.baselines import BASELINES
+    from trading_agent.depot import DEFAULT_RULES, load_rules
+    from trading_agent.feeds.news import RssNewsProvider
+    from trading_agent.feeds.prices import YFinanceProvider
+    from trading_agent.runner import run_tick
+    from trading_agent.snapshot import build_fill_quotes, save_fill_quotes
+    from trading_agent.store import DepotStore
+
+    logging.basicConfig(level=logging.WARNING)
+    rules = load_rules()
+    if start_eur is None:
+        start_eur = tomllib.loads(DEFAULT_RULES.read_text(encoding="utf-8"))["sizes"]["live_eur"]
+    wl = load_watchlist(watchlist)
+    prices = YFinanceProvider()
+    snap = build_snapshot(wl, prices, None if no_news else RssNewsProvider())
+    save_snapshot(snap, out)
+    # Entscheidungen folgen hier später auch von den LLM-Agenten; danach erst die Ausführungskurse abrufen
+    deadline = time.monotonic() + wait
+    fill = build_fill_quotes(wl, prices, snap)
+    # Xetra-Kurse sind bei yfinance rund 15 Minuten verzögert: so lange neu abfragen, bis jeder Wert an einer
+    # offenen Börse einen neueren Kurs hat als im Snapshot, höchstens `wait` Sekunden. Erst danach warten
+    # Orders auf den nächsten Takt.
+    while not _fill_ready(snap, fill) and time.monotonic() < deadline:
+        time.sleep(60)
+        fill = build_fill_quotes(wl, prices, snap)
+    save_fill_quotes(fill, snap, out)
+    store = DepotStore(db)
+    results = run_tick(snap, fill, store, BASELINES, start_eur, rules)
+    t = Table(title=f"Takt {snap['taken_at']} · Ausführung {fill['taken_at']}")
+    for col in ("Depot", "Wert €", "Rendite", "Orders", "ausgeführt", "wartend", "abgelehnt", "Gebühren €"):
+        t.add_column(col, justify="left" if col == "Depot" else "right")
+    for name, r in results.items():
+        s = r["summary"]
+        t.add_row(
+            name,
+            f"{s['value_eur']:.2f}",
+            _pct(s["return"]),
+            str(len(r["orders"])),
+            str(len(r["fills"])),
+            str(len(r["pending"])),
+            str(len(r["rejected"])),
+            f"{s['fees_eur']:.2f}",
+        )
+    console.print(t)
+    store.close()
+
+
+@app.command()
+def depots(db: Path = typer.Option(Path("data") / "depots.sqlite", help="Depot-Datenbank")) -> None:
+    """Stand aller Depots (aus dem Ereignisprotokoll neu berechnet)."""
+    from trading_agent.store import DepotStore
+
+    store = DepotStore(db)
+    for name in store.names():
+        depot = store.load(name)
+        marks = store.marks(name)
+        last = marks[-1][1] if marks else depot.start_eur
+        pos = ", ".join(f"{a} {p['shares']:.4f}" for a, p in depot.positions().items()) or "nur Cash"
+        console.print(
+            f"[bold]{name}[/bold]  {last:.2f} € ({_pct(last / depot.start_eur - 1)}) · "
+            f"Cash {depot.cash:.2f} € · "
+            f"Gebühren {depot.fees_paid:.2f} € · Steuern {depot.taxes_paid:.2f} € · {pos}"
+        )
+    store.close()
 
 
 if __name__ == "__main__":
