@@ -1,0 +1,163 @@
+# Feste Watchlist. Nicht während eines laufenden Vergleichs ändern, sonst sind die Läufe nicht vergleichbar.
+#
+# symbol   – Symbol bei Yahoo Finance (Kursquelle)
+# exchange – XETRA, NYSE oder NASDAQ (bestimmt die Handelszeiten)
+# kind     – stock oder etf (wichtig für Steuern: Teilfreistellung bei Aktien-ETFs)
+# aliases  – Namen, unter denen der Wert in News vorkommt (Groß-/Kleinschreibung egal, ganze Wörter)
+# news     – Suchbegriff für den News-Feed
+
+[[asset]]
+id = "SAP"
+symbol = "SAP.DE"
+name = "SAP SE"
+exchange = "XETRA"
+currency = "EUR"
+kind = "stock"
+aliases = ["SAP"]
+news = "SAP Aktie"
+
+[[asset]]
+id = "SIE"
+symbol = "SIE.DE"
+name = "Siemens AG"
+exchange = "XETRA"
+currency = "EUR"
+kind = "stock"
+aliases = ["Siemens"]
+news = "Siemens Aktie"
+
+[[asset]]
+id = "ALV"
+symbol = "ALV.DE"
+name = "Allianz SE"
+exchange = "XETRA"
+currency = "EUR"
+kind = "stock"
+aliases = ["Allianz"]
+news = "Allianz Aktie"
+
+[[asset]]
+id = "DTE"
+symbol = "DTE.DE"
+name = "Deutsche Telekom AG"
+exchange = "XETRA"
+currency = "EUR"
+kind = "stock"
+aliases = ["Deutsche Telekom", "Telekom"]
+news = "Deutsche Telekom Aktie"
+
+[[asset]]
+id = "BAS"
+symbol = "BAS.DE"
+name = "BASF SE"
+exchange = "XETRA"
+currency = "EUR"
+kind = "stock"
+aliases = ["BASF"]
+news = "BASF Aktie"
+
+[[asset]]
+id = "RHM"
+symbol = "RHM.DE"
+name = "Rheinmetall AG"
+exchange = "XETRA"
+currency = "EUR"
+kind = "stock"
+aliases = ["Rheinmetall"]
+news = "Rheinmetall Aktie"
+
+[[asset]]
+id = "MBG"
+symbol = "MBG.DE"
+name = "Mercedes-Benz Group AG"
+exchange = "XETRA"
+currency = "EUR"
+kind = "stock"
+aliases = ["Mercedes-Benz", "Mercedes"]
+news = "Mercedes-Benz Aktie"
+
+[[asset]]
+id = "AAPL"
+symbol = "AAPL"
+name = "Apple Inc."
+exchange = "NASDAQ"
+currency = "USD"
+kind = "stock"
+aliases = ["Apple"]
+news = "Apple stock"
+
+[[asset]]
+id = "MSFT"
+symbol = "MSFT"
+name = "Microsoft Corp."
+exchange = "NASDAQ"
+currency = "USD"
+kind = "stock"
+aliases = ["Microsoft"]
+news = "Microsoft stock"
+
+[[asset]]
+id = "NVDA"
+symbol = "NVDA"
+name = "NVIDIA Corp."
+exchange = "NASDAQ"
+currency = "USD"
+kind = "stock"
+aliases = ["Nvidia"]
+news = "Nvidia stock"
+
+[[asset]]
+id = "AMZN"
+symbol = "AMZN"
+name = "Amazon.com Inc."
+exchange = "NASDAQ"
+currency = "USD"
+kind = "stock"
+aliases = ["Amazon"]
+news = "Amazon stock"
+
+[[asset]]
+id = "JPM"
+symbol = "JPM"
+name = "JPMorgan Chase & Co."
+exchange = "NYSE"
+currency = "USD"
+kind = "stock"
+aliases = ["JPMorgan", "JP Morgan"]
+news = "JPMorgan stock"
+
+[[asset]]
+id = "MSCIW"
+symbol = "EUNL.DE"
+name = "iShares Core MSCI World UCITS ETF"
+exchange = "XETRA"
+currency = "EUR"
+kind = "etf"
+aliases = ["MSCI World"]
+news = "MSCI World"
+
+[[asset]]
+id = "DAX"
+symbol = "EXS1.DE"
+name = "iShares Core DAX UCITS ETF"
+exchange = "XETRA"
+currency = "EUR"
+kind = "etf"
+aliases = ["DAX"]
+news = "DAX Börse"
+
+[[asset]]
+id = "SP500"
+symbol = "SXR8.DE"
+name = "iShares Core S&P 500 UCITS ETF"
+exchange = "XETRA"
+currency = "EUR"
+kind = "etf"
+aliases = ["S&P 500", "S&P500"]
+news = "S&P 500"
+
+# Allgemeine Markt-News ohne festen Wert (werden über die Aliases trotzdem Werten zugeordnet, wenn möglich)
+[market]
+news = ["Börse Frankfurt DAX", "Wall Street stocks", "EZB Zinsen", "Fed interest rates"]
+# Wechselkurs für USD-Werte (Depotwährung ist EUR)
+fx_symbol = "EURUSD=X"

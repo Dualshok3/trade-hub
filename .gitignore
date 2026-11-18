@@ -221,3 +221,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Trading-Agent: lokale Daten und Messläufe
+data/
+runs/
