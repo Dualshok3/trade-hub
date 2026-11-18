@@ -372,7 +372,18 @@ Funktionierender Start (getestet am 18.11.2026):
 **Start im Notbetrieb:** `scripts/start-engine.ps1` entpackt den Tag `gemma4-engine-c0014` einmalig nach
 `%LOCALAPPDATA%\crit-gemma-runtime` und startet candidate-0014 auf Port 8000 (getestet am 18.11.2026, 96 tok/s).
 
-**Migration auf crit 0.19 (blockiert, Entscheidung offen):** Ein Neubau ist nicht nötig. `candidate-0017` (neues
+**Stand 18.11.2026 abends:** Die 200k-Korrektur ist gestoppt, weil crit 0.20.0 erscheint und die Engine danach neu
+gebaut wird. Alle Befunde (Migration, Full-Context-Checks, Speicheranalyse, Tool-Calling-Lücke, fused-norms) stehen
+in `crit/runs/run-20261109T095346Z-1b210ccf/work/findings-crit-0.19.md`. Letzte Messung bei 200k: Prefill 241 s,
+Decode ≈60 tok/s; bei 3.000 Tokens Prompt 1,09 s und Decode 94 tok/s. Kernbefund: `host_experts` kopiert pro Schritt
+den ganzen Expertensatz einer Schicht auf die GPU. Für 0.20 sind routenbasierte Host-Experten oder eine kleinere
+Kodierung einzelner Expertenschichten die besseren Wege.
+
+**Bekannte Macke im Notbetrieb:** `GET /v1/models` bricht ab, weil der 0.17-Server die neuen Entwürfe c15 und c16
+im Run nicht lesen kann. Chat und `/health` funktionieren. Clients sollten die Modell-ID fest konfigurieren und
+`/v1/models` nicht abfragen (die harness-it-all-Adapter tun das nicht, `scripts/m0_engine_check.py` schon).
+
+**Migration auf crit 0.19 (abgebrochen, wird mit 0.20 neu aufgesetzt):** Ein Neubau ist nicht nötig. `candidate-0017` (neues
 Segment `segment-0005`, `plan-0009`) ist derselbe Code wie candidate-0014. Das ungenutzte Plugin `fused-norms`
 entfällt, `topk-router` hat das neue Kernel-Format. Alle Plugin-Tests und Serving-Checks bestehen. Er ist aber
 **nicht versiegelt**, weil zwei in crit 0.19 neue Checks über den vollen Kontext von 200.000 Tokens scheitern:
