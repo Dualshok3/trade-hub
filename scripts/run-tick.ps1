@@ -8,6 +8,7 @@
 
 param(
     [string]$Agents = "gemma,deepseek",
+    [switch]$DryRun,  # nur zum Testen: zeigt die Depots statt einen Takt auszulösen
     [string]$Repo = (Split-Path -Parent $PSScriptRoot),
     [string]$Uv = "$env:USERPROFILE\.local\bin\uv.exe",
     [string]$Health = "http://127.0.0.1:8000/health"
@@ -35,7 +36,12 @@ try {
     exit 2
 }
 
-& $Uv run trading-agent tick --agents $Agents *>> $log
+# Windows PowerShell 5.1 schreibt mit *>> UTF-16; deshalb Zeile für Zeile als UTF-8 anhängen.
+# Breite fest, damit rich die Tabellen nicht auf 80 Zeichen umbricht.
+$env:COLUMNS = "160"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$cmd = if ($DryRun) { @("run", "trading-agent", "depots") } else { @("run", "trading-agent", "tick", "--agents", $Agents) }
+& $Uv @cmd 2>&1 | ForEach-Object { Add-Content -Path $log -Value "$_" -Encoding utf8 }
 $code = $LASTEXITCODE
 Write-Log "Takt beendet, Exit-Code $code"
 exit $code
