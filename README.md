@@ -110,6 +110,11 @@ uv run trading-agent backtest --agents gemma,deepseek --sizes 100,10000 --name j
 | Reliability | Schema errors, risk-check rejections, forced holds, reasons citing news that does not exist |
 | Efficiency | Latency and tokens per tick, cost: exact for APIs, estimated electricity for the local GPU |
 
+`trading-agent score` computes the forward score for every portfolio in a live or backtest database at 1, 5 and
+20 trading days: per tick, with a 95 % interval from a block bootstrap over trading weeks, the total in euros
+before and after fees, and the hit rate. Two agents are compared pairwise on the same snapshots, and a difference
+only counts when its interval excludes zero.
+
 Two portfolio sizes run side by side: €100 live and €10,000 in replay. At €100 the fees dominate; at €10,000 the
 decision itself counts. Baselines without an LLM: `cash`, `hold-msciw`, `eq-etfs`, `sma-trend` and `random`.
 
@@ -117,7 +122,7 @@ decision itself counts. Baselines without an LLM: `cash`, `hold-msciw`, `eq-etfs
 
 Requirements: [uv](https://docs.astral.sh/uv/). For the local model a running crit engine
 (`scripts/start-engine.ps1`); for Opus a logged-in Claude Code CLI (`claude`, then `/login`); for DeepSeek
-`DEEPSEEK_API_KEY`.
+an API key in the environment variable named by `api_key_env` in `configs/agent.toml`.
 
 ```bash
 git clone https://github.com/Dualshok3/trade-hub.git && cd trade-hub
@@ -128,6 +133,7 @@ uv run trading-agent decide <file> --agent gemma      # one probe decision, noth
 uv run trading-agent tick --agents gemma,opus         # one live tick: snapshot, decisions, execution
 uv run trading-agent depots                           # state of all portfolios
 uv run trading-agent backtest --agents gemma,deepseek # trade the past, day by day
+uv run trading-agent score --db data/backtest/default.sqlite  # forward score with confidence intervals
 ```
 
 ## Configuration
@@ -158,6 +164,7 @@ src/trading_agent/
 ├── execution.py   # orders as % of portfolio, fill at a newer quote, pending orders
 ├── store.py       # event-sourced SQLite store (events, pending, marks, decisions)
 ├── baselines.py   # rule-based comparison portfolios
+├── bench/         # forward score and statistics
 ├── runner.py      # one tick for all strategies, live and replay alike
 ├── backtest.py    # past trading days as snapshots: daily bars, historical news
 └── cli.py

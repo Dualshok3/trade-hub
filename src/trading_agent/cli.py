@@ -1,4 +1,4 @@
-"""Kommandozeile: snapshot, show, list, news, decide, tick, backtest, depots."""
+"""Kommandozeile: snapshot, show, list, news, decide, tick, backtest, score, depots."""
 
 from __future__ import annotations
 
@@ -334,6 +334,68 @@ def _backtest_table(store, title: str) -> None:
     for ret, name, last, dd, trades, fees, taxes in sorted(rows, reverse=True):
         t.add_row(name, f"{last:.2f}", _pct(ret), _pct(dd), str(trades), f"{fees:.2f}", f"{taxes:.2f}")
     console.print(t)
+
+
+@app.command()
+def score(
+    db: Path = typer.Option(Path("data") / "depots.sqlite", help="Depot-Datenbank (live oder Backtest)"),
+    horizons: str = typer.Option("1,5,20", help="Horizonte in Handelstagen"),
+    watchlist: Path = typer.Option(DEFAULT_WATCHLIST, help="Watchlist (TOML)"),
+) -> None:
+    """Forward-Score aller Depots: Was brachten die Orders nach h Tagen gegenüber Nichtstun?"""
+    from datetime import date, datetime, timedelta
+    from itertools import combinations
+
+    from trading_agent.backtest import download_bars
+    from trading_agent.bench.forward import depot_scores, eur_series, load_rows, paired
+    from trading_agent.store import DepotStore
+
+    logging.basicConfig(level=logging.WARNING)
+    store = DepotStore(db)
+    names = store.names()
+    rows = {n: load_rows(store, n) for n in names}
+    ats = [at for r in rows.values() for _, at, _ in r]
+    if not ats:
+        console.print("Keine Entscheidungen in der Datenbank.")
+        raise typer.Exit(1)
+    first = datetime.fromisoformat(min(ats)).date()
+    wl = load_watchlist(watchlist)
+    series = eur_series(download_bars(wl, first, date.today() - timedelta(days=1), history_days=5), wl)
+    agents = [n for n in names if any("agent" in p for _, _, p in rows[n])]
+    for h in (int(x) for x in horizons.split(",")):
+        scores = {n: depot_scores(rows[n], n, series, h) for n in names}
+        t = Table(title=f"Forward-Score nach {h} Handelstag{'en' if h > 1 else ''} · {db.name}")
+        for col in (
+            "Depot",
+            "Takte",
+            "Orders",
+            "Ø je Takt",
+            "95 %-KI",
+            "Summe €",
+            "vor Gebühren €",
+            "Treffer",
+        ):
+            t.add_column(col, justify="left" if col == "Depot" else "right")
+        for n, sc in sorted(scores.items(), key=lambda kv: -kv[1].total_eur):
+            if not sc.by_snapshot:
+                continue
+            e = sc.estimate()
+            hit = "–" if sc.hit_rate is None else f"{sc.hit_rate * 100:.0f} %"
+            t.add_row(
+                n, str(e.n), str(len(sc.orders)), f"{e.mean * 100:+.3f} %",
+                f"{e.low * 100:+.3f} … {e.high * 100:+.3f}", f"{sc.total_eur:+.2f}",
+                f"{sc.before_fees_eur:+.2f}", hit,
+            )  # fmt: skip
+        console.print(t)
+        for a, b in combinations(agents, 2):
+            if scores[a].by_snapshot and scores[b].by_snapshot:
+                d = paired(scores[a], scores[b])
+                verdict = "Unterschied belegt" if d.excludes_zero else "kein belegter Unterschied"
+                console.print(
+                    f"  {a} − {b}: {d.mean * 100:+.3f} % je Takt "
+                    f"(95 %-KI {d.low * 100:+.3f} … {d.high * 100:+.3f}, {d.n_blocks} Wochen) · {verdict}"
+                )
+    store.close()
 
 
 @app.command()

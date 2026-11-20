@@ -10,6 +10,13 @@ All notable changes to this project are listed here. The format follows
   opened (daily closes up to the day before, news dated the day before), fills at that day's opening price. Same
   snapshot, agent and portfolio code as live, separate database under `data/backtest/`, resumable.
 - Historical Google News with a per-day cache, so each day is fetched only once.
+- Forward score (`trading-agent score`): each order against the equal-weight watchlist after 1, 5 and 20 trading
+  days, after fees and before tax; holds count as zero. Block bootstrap over trading weeks and paired comparison
+  of agents on the same snapshots (harness-it-all).
+
+### Changed
+- Model calls are retried after 5 and 30 seconds when the model cannot be reached; only then does the tick count
+  as an error.
 
 ## [0.3.0] - 2026-11-20
 
