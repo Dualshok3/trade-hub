@@ -261,10 +261,11 @@ def test_models_from_config(monkeypatch):
     assert isinstance(build_model("opus", CFG), ClaudeCodeModel)
     gemma = build_model("gemma", CFG)
     assert isinstance(gemma, OpenAICompatModel) and gemma.local and gemma.backend == "openai"
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    with pytest.raises(ModelError, match="DEEPSEEK_API_KEY"):
+    key_env = CFG.models["deepseek"]["api_key_env"]
+    monkeypatch.delenv(key_env, raising=False)
+    with pytest.raises(ModelError, match=key_env):
         build_model("deepseek", CFG)
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "test")
+    monkeypatch.setenv(key_env, "test")
     ds = build_model("deepseek", CFG)
     assert ds.backend == "deepseek" and ds.schema_mode == "json_object" and not ds.local
     assert {"openai", "claude_code", "deepseek"} <= set(PROFILE.backends)

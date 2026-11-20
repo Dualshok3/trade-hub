@@ -33,8 +33,9 @@ base_url = "http://127.0.0.1:8000/v1"
 backend = "claude_code"
 model = "claude-opus-5-5"
 
-# Zusätzliche Referenz: DeepSeek über die OpenAI-kompatible API (Key in DEEPSEEK_API_KEY)
+# Zusätzliche Referenz: DeepSeek über die OpenAI-kompatible API. Der Key liegt in der Umgebungsvariable api_key_env.
 [models.deepseek]
 backend = "deepseek"
 model = "deepseek-chat"
 base_url = "https://api.deepseek.com/v1"
+api_key_env = "Deepseek_API"
