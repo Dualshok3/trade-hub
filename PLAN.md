@@ -355,52 +355,36 @@ Skript: `scripts/m0_engine_check.py`, Bericht: `runs/m0/m0-20261118T093631.json`
 
 ### 4.1.2 Start der Engine
 
-Mit dem installierten crit 0.19.0 startet die Engine **nicht**. Das Plugin-Format hat sich seit dem Bau geändert
-(`fused-norms/plugin.json: a kernel is {name, fallback}`). Gebaut wurde sie mit crit 0.17.1 plus lokalen
-Gemma-Anpassungen, nämlich der Attention-Geometrie pro Layer-Typ in `crit_core/model`. Diese Anpassungen liegen
-nur noch in `git stash@{0}` des crit-Repos.
+**Stand 20.11.2026: candidate-0024 auf crit 0.21, zertifiziert.** Alle Eval-Gates und Run-Checks bestanden,
+200k Kontext, der ausgewählte Kandidat des Runs.
 
-Funktionierender Start (getestet am 18.11.2026):
-1. Den Stand aus dem Stash in einen eigenen Ordner entpacken: `git archive stash@{0} | tar -x -C <ordner>`
-2. `PYTHONPATH` auf `cli`, `api`, `kernels`, `models`, `core/python` und `inference` dieses Ordners setzen
-3. `CRIT_CORE_STEP_LIBRARY=D:\crit-workspace\build\core\crit_core_steps.dll` setzen
-4. `crit.cli serve` mit dem venv des crit-Repos und Run/Kandidat wie oben starten
+- Start: `scripts/start-engine.ps1`. Das Skript ruft
+  `crit/runs/run-20261109T095346Z-1b210ccf/start-candidate-0024.cmd` auf. Das setzt die MSVC-Umgebung und Cores
+  eigene Laufzeit von crit 0.21 und braucht das crit-Checkout im aktuellen Stand (Branch `feat/package-tool-format`).
+- Modell-ID: `run-20261109T095346Z-1b210ccf/candidate-0024`, Basis-URL `http://127.0.0.1:8000/v1`.
+- Tempo laut crit-Chat: Decode etwa 92–100 tok/s, erstes Token nach etwa 150 ms bei 2k Prompt, Prefill von 3k
+  Tokens etwa 875 ms.
+- Neu gegenüber c0014: Tool-Calls kommen als OpenAI-`tool_calls` (auch gestreamt). Der Thinking-Block landet in
+  `reasoning_content`, nicht in `content`. `response_format` mit JSON-Schema funktioniert (`chat-constraints-v1`).
+- Bleibt: Die Grammatik schreibt kompaktes JSON, und das erste Freitextfeld beginnt manchmal mit „: “. Der Agent
+  entfernt das beim Lesen (`agent/schema.py`).
+- Bekannte Macke: `GET /v1/models` bricht ab, weil `crit serve` die alten 0.17-Kandidaten des Runs prüft. Die
+  Modell-ID steht fest in `configs/agent.toml`, Clients rufen `chat/completions` direkt auf.
 
-**Gesichert am 18.11.2026:** Der Stash liegt jetzt zusätzlich als Branch `gemma4-engine` und Tag
-`gemma4-engine-c0014` im crit-Repo. Ein versehentliches `git stash drop` kann den Notbetrieb nicht mehr verhindern.
+**Rückfall:** `scripts/start-engine.ps1 -Fallback` startet candidate-0014 (crit 0.17.1 plus lokale
+Gemma-Anpassungen, gesichert als Branch `gemma4-engine` und Tag `gemma4-engine-c0014` im crit-Repo). Nie beide
+gleichzeitig starten, es gibt nur eine GPU.
 
-**Start im Notbetrieb:** `scripts/start-engine.ps1` entpackt den Tag `gemma4-engine-c0014` einmalig nach
-`%LOCALAPPDATA%\crit-gemma-runtime` und startet candidate-0014 auf Port 8000 (getestet am 18.11.2026, 96 tok/s).
+**Weg dorthin (kurz):** candidate-0014 lief nach dem Umstieg auf crit 0.19 nicht mehr (Plugin-Format) und nur im
+Notbetrieb aus dem gesicherten Stand. Die Migration scheiterte zunächst an den neuen Checks für den vollen Kontext
+(Prompt-Schritt über 1 s, zu wenig Speicherreserve). Mit crit 0.21 kamen über candidate-0018 bis -0023 der
+200k-Speichercheck, natives Tool-Calling in Gemmas Syntax, das Abtrennen des Thinking-Kanals, ein abgeschnittener
+Tool-Call unter Last und die RAM-Belegung durch die GGUF-Speicherabbildung dazu. Details stehen in
+`crit/runs/run-20261109T095346Z-1b210ccf/work/`. Nebenbefund für crit-labs: der Bericht zu `fused-norms` als
+[crit-labs/crit#81](https://github.com/crit-labs/crit/pull/81).
 
-**Stand 18.11.2026 abends:** Die 200k-Korrektur ist gestoppt, weil crit 0.20.0 erscheint und die Engine danach neu
-gebaut wird. Alle Befunde (Migration, Full-Context-Checks, Speicheranalyse, Tool-Calling-Lücke, fused-norms) stehen
-in `crit/runs/run-20261109T095346Z-1b210ccf/work/findings-crit-0.19.md`. Letzte Messung bei 200k: Prefill 241 s,
-Decode ≈60 tok/s; bei 3.000 Tokens Prompt 1,09 s und Decode 94 tok/s. Kernbefund: `host_experts` kopiert pro Schritt
-den ganzen Expertensatz einer Schicht auf die GPU. Für 0.20 sind routenbasierte Host-Experten oder eine kleinere
-Kodierung einzelner Expertenschichten die besseren Wege.
-
-**Bekannte Macke im Notbetrieb:** `GET /v1/models` bricht ab, weil der 0.17-Server die neuen Entwürfe c15 und c16
-im Run nicht lesen kann. Chat und `/health` funktionieren. Clients sollten die Modell-ID fest konfigurieren und
-`/v1/models` nicht abfragen (die harness-it-all-Adapter tun das nicht, `scripts/m0_engine_check.py` schon).
-
-**Migration auf crit 0.19 (abgebrochen, wird mit 0.20 neu aufgesetzt):** Ein Neubau ist nicht nötig. `candidate-0017` (neues
-Segment `segment-0005`, `plan-0009`) ist derselbe Code wie candidate-0014. Das ungenutzte Plugin `fused-norms`
-entfällt, `topk-router` hat das neue Kernel-Format. Alle Plugin-Tests und Serving-Checks bestehen. Er ist aber
-**nicht versiegelt**, weil zwei in crit 0.19 neue Checks über den vollen Kontext von 200.000 Tokens scheitern:
-- `full_context_prompt_step`: Der langsamste Prompt-Schritt braucht 1,062 s, erlaubt ist 1 s. Ein Abbruch wirkt
-  nur zwischen Schritten.
-- `full_context_device_memory`: Bei voller Belegung bleiben 0,09 GiB (Decode) bzw. −0,06 GiB (Prompt) frei,
-  verlangt ist 1 GiB Reserve. Der localrag-Dienst belegte dabei rund 0,7 GB.
-Das liegt nicht an der Migration. candidate-0014 wurde unter 0.17 nur nie gegen diese Checks gemessen. Mögliche
-Wege: (a) kleinere Prefill-Stücke und weniger Speicher an der Spitze als Korrektur im selben Plan, das ist echte
-Engine-Arbeit; (b) Kontext für die Engine kleiner wählen, z. B. 128k statt 200k, was für den Agenten reicht;
-(c) beim Notbetrieb bleiben.
-
-**Nebenbefund für crit-labs:** Das unveränderte `fused-norms` aus crit 0.19 besteht auf diesem Rechner einen Test
-nicht: Bei FP32-Streams mit Gewichten pro Stream weicht die Norm-Ausgabe um bis zu 3 ULP ab. Ein Bugreport-Entwurf
-liegt in `crit/drafts/fused-norms-stream-add-norm-fp32.md` und ist noch nicht abgeschickt.
-
-Laut crit-Doku: `n > 1` wird abgelehnt, deshalb laufen mehrere Antworten als parallele Requests.
+Laut crit-Doku: `n > 1` wird abgelehnt, deshalb laufen mehrere Antworten als parallele Requests. Die Engine
+erlaubt höchstens 2 gleichzeitige Anfragen.
 
 ### 4.2 Referenz: Claude Opus 5.5
 
@@ -625,7 +609,7 @@ trading-agent/
 | **1** | **Feeds und Snapshots** ✅ | Erledigt am 18.11.2026: `trading-agent snapshot` holt Kurse (yfinance, USD in EUR umgerechnet) und Google-News-RSS für 15 Werte, ordnet News per Alias zu und friert alles als gzip-JSON mit SHA-256 ein. 30 Tests ohne Netz, u. a. kein Look-ahead bei Kerzen und News, Manipulationsschutz per Hash, Werkzeuge ohne Netzzugriff. Erster Live-Snapshot: 15/15 Kurse, 705 News. Die Relevanz-Sortierung der News ist erledigt, siehe 3.1.1. |
 | **2** | **Musterdepot und Vergleichs-Depots** ✅ | Erledigt am 18.11.2026: Depot als Ereignisprotokoll in SQLite (`depot.py`, `store.py`), Orders in Prozent des Depots mit Bruchstücken, 1 € Gebühr und 0,1 % halbem Spread, Ausführung nur zu einem neueren, eingefrorenen Ausführungskurs (bis zu 20 Minuten Neuabfrage, sonst Warten bis zum nächsten Takt, Verfall nach 3 Takten). Steuern Stufe 1 (26,375 %, FIFO, Gebühren mindern den Gewinn, Pauschbetrag einstellbar). Fünf Vergleichs-Depots: `cash`, `hold-msciw`, `eq-etfs`, `sma-trend`, `random`. `trading-agent tick` und `trading-agent depots`. 25 neue Tests, darunter von Hand nachgerechnete Steuerbeispiele. |
 | **3** | **Agent mit Fake-LLM** ✅ | Erledigt am 20.11.2026: LangGraph-Graph `screen → gather → decide → risk → finish` in `src/trading_agent/agent/`. Entscheidung als JSON nach geschlossenem Schema (nur Enums, Arrays und Integer ohne Grenzen, damit crit und Opus dasselbe Schema nehmen), Risk-Check im Code mit Rückmeldung ans Modell, nach 2 Ablehnungen erzwungenes Halten, Verbindungsfehler getrennt davon (`error`). Jeder Modellaufruf läuft über den Recorder von harness-it-all (Replay-fähig, Tags: Snapshot, Depot, Woche, Versuch, Hash von `configs/agent.toml`). Journal: die letzte Notiz des Agenten steht im nächsten Prompt. `trading-agent decide <snapshot>` für Probeentscheidungen, `trading-agent tick --agents gemma,opus`. 30 neue Tests. Ein Prompt auf einem echten Snapshot hat rund 2.300 Tokens. |
-| **4** | **Beide Modelle anbinden und eine Woche Probebetrieb** (Gemma angebunden: Probelauf am 20.11.2026 auf c0014, 3 Snapshots, 3/3 gültiges JSON beim ersten Versuch, 1,8–3,3k Tokens Eingabe, 1,7–12,4 s; c0014 setzt vor Freitext manchmal „: “, das wird beim Lesen entfernt) | Gemma und Opus handeln 3× täglich. Kosten pro Tag und Ausfallquote sind gemessen, die Opus-Budgetgrenze ist festgelegt. |
+| **4** | **Beide Modelle anbinden und eine Woche Probebetrieb** (Gemma angebunden: Probelauf am 20.11.2026 auf c0014 und c0024, je 3 Snapshots, identische Entscheidungen, 3/3 gültiges JSON beim ersten Versuch, 1,8–3,3k Tokens Eingabe, 1,7–12,4 s; c0014 setzt vor Freitext manchmal „: “, das wird beim Lesen entfernt) | Gemma und Opus handeln 3× täglich. Kosten pro Tag und Ausfallquote sind gemessen, die Opus-Budgetgrenze ist festgelegt. |
 | **5** | **Dashboard** | Equity-Kurven, Entscheidungs-Feed und Positionen sind sichtbar. |
 | **6** | **Replay-Bench und Stufen L1–L5** | Forward-Score (Hauptkennzahl) für alle Entscheidungen auf den aufgezeichneten Snapshots, Ablation aller Stufen daran gemessen, Übereinstimmung mit Opus als Zweitkennzahl aufgeschlüsselt nach Forward-Score, erster Report mit Konfidenzintervallen. |
 | **7** | **Dauerbetrieb** | Läuft über Wochen. Das README zeigt regelmäßig aktualisierte Ergebnisse. |

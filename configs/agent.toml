@@ -25,7 +25,7 @@ max_rejections = 2     # nach 2 Ablehnungen im selben Takt gilt "halten" (erzwun
 
 [models.gemma]
 backend = "openai"
-model = "run-20261109T095346Z-1b210ccf/candidate-0014"
+model = "run-20261109T095346Z-1b210ccf/candidate-0024"
 base_url = "http://127.0.0.1:8000/v1"
 
 # Opus 5.5 über die Claude-Code-CLI (Abo). Mit API-Key ginge auch backend = "anthropic".

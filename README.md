@@ -13,11 +13,11 @@
 ```text
 > trading-agent decide data/snapshots/2026-11-18/115347Z-9fec907d88ad.json.gz --agent gemma
 
-gemma · run-20261109T095346Z-1b210ccf/candidate-0014 · trade
+gemma · run-20261109T095346Z-1b210ccf/candidate-0024 · trade
   Assessment: The portfolio is 100 % cash. NVDA shows an extremely oversold RSI of 22.5, which could point to a
   short-term rebound.
   buy NVDA 25 % · RSI deeply oversold · [indicator:rsi14]
-  Call 1: 1815 -> 113 tokens, 2.2 s
+  Call 1: 1815 -> 113 tokens, 2.1 s
   Note: Watch NVDA for a bottom after entry.
 ```
 
