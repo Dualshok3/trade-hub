@@ -5,6 +5,10 @@
 # - Claude Opus 5.5 kann Thinking nicht abschalten (thinking: disabled → HTTP 400). Gesteuert wird nur über
 #   `effort` (low … max, Standard medium). Temperatur und top_p lehnt das Modell ab.
 # - Gemma über crit kann Thinking an- und abschalten (`enable_thinking`) und Sampling fest einstellen.
+# - claude_code: dieselben Claude-Modelle über die Claude-Code-CLI (`claude -p`, Abo statt API-Key). Gesteuert
+#   ebenfalls nur über `effort` (low, medium, high, max).
+# - deepseek: ein weiteres Vergleichsmodell über die OpenAI-kompatible DeepSeek-API. Kein festes JSON-Schema
+#   (nur json_object, das Schema steht im System-Prompt), kein Seed.
 # Diese Unterschiede stehen in `asymmetries` und landen in jedem Report.
 
 [profile.minimal]
@@ -13,6 +17,8 @@ max_tokens = 4000
 asymmetries = [
   "Opus 5.5 denkt immer (adaptiv); effort=low ist die niedrigste Stufe. Gemma denkt hier gar nicht.",
   "Opus 5.5 nimmt keine Temperatur an; Gemma läuft mit fester Temperatur und Seed.",
+  "claude_code: Mehrere Runden (z. B. nach einer Ablehnung) gehen als ein Text an die CLI; die Latenz enthält den Start der CLI.",
+  "deepseek: Das Schema wird nicht erzwungen, nur gültiges JSON; das Schema steht im System-Prompt.",
 ]
 
 [profile.minimal.openai]
@@ -22,6 +28,12 @@ seed = 7
 
 [profile.minimal.anthropic]
 effort = "low"
+
+[profile.minimal.claude_code]
+effort = "low"
+
+[profile.minimal.deepseek]
+temperature = 0.0
 
 [profile.think]
 description = "Mit Nachdenken. Für den Replay-Vergleich der Denktiefe."
@@ -37,6 +49,9 @@ temperature = 0.0
 seed = 7
 
 [profile.think.anthropic]
+effort = "medium"
+
+[profile.think.claude_code]
 effort = "medium"
 
 [profile.vote]

@@ -234,7 +234,7 @@ wheels = [
 [[package]]
 name = "harness-it-all"
 version = "0.1.0"
-source = { git = "https://github.com/Dualshok3/harness-it-all?rev=df64b48#df64b48d8ee37e84d8b5fac2e441ed2c250c7650" }
+source = { git = "https://github.com/Dualshok3/harness-it-all?rev=bbca140#bbca140f3b5691eb57791277bc64e92c8dfe61d2" }
 dependencies = [
     { name = "anthropic" },
     { name = "httpx" },
@@ -920,7 +920,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "feedparser", specifier = ">=6.0" },
-    { name = "harness-it-all", git = "https://github.com/Dualshok3/harness-it-all?rev=df64b48" },
+    { name = "harness-it-all", git = "https://github.com/Dualshok3/harness-it-all?rev=bbca140" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "langgraph", specifier = ">=1.2.24" },
     { name = "rich", specifier = ">=13.7" },

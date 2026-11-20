@@ -249,3 +249,22 @@ def test_agent_config_has_version_and_models():
     assert len(cfg.version) == 12
     assert {"gemma", "opus"} <= set(cfg.models)
     assert isinstance(cfg.risk, RiskConfig)
+
+
+def test_models_from_config(monkeypatch):
+    from harness_it_all.models.base import ModelError
+    from harness_it_all.models.claude_code import ClaudeCodeModel
+    from harness_it_all.models.openai_compat import OpenAICompatModel
+
+    from trading_agent.agent.models import build_model
+
+    assert isinstance(build_model("opus", CFG), ClaudeCodeModel)
+    gemma = build_model("gemma", CFG)
+    assert isinstance(gemma, OpenAICompatModel) and gemma.local and gemma.backend == "openai"
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    with pytest.raises(ModelError, match="DEEPSEEK_API_KEY"):
+        build_model("deepseek", CFG)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test")
+    ds = build_model("deepseek", CFG)
+    assert ds.backend == "deepseek" and ds.schema_mode == "json_object" and not ds.local
+    assert {"openai", "claude_code", "deepseek"} <= set(PROFILE.backends)

@@ -28,6 +28,13 @@ backend = "openai"
 model = "run-20261109T095346Z-1b210ccf/candidate-0014"
 base_url = "http://127.0.0.1:8000/v1"
 
+# Opus 5.5 über die Claude-Code-CLI (Abo). Mit API-Key ginge auch backend = "anthropic".
 [models.opus]
-backend = "anthropic"
+backend = "claude_code"
 model = "claude-opus-5-5"
+
+# Zusätzliche Referenz: DeepSeek über die OpenAI-kompatible API (Key in DEEPSEEK_API_KEY)
+[models.deepseek]
+backend = "deepseek"
+model = "deepseek-chat"
+base_url = "https://api.deepseek.com/v1"

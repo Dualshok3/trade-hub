@@ -46,7 +46,7 @@ markers = ["network: braucht Internet (yfinance, RSS); in CI abgewählt"]
 addopts = "-m 'not network'"
 
 [tool.uv.sources]
-harness-it-all = { git = "https://github.com/Dualshok3/harness-it-all", rev = "df64b48" }
+harness-it-all = { git = "https://github.com/Dualshok3/harness-it-all", rev = "bbca140" }
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]  # RSS-Beispiele mit langen Zeilen

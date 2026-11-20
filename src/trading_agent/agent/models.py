@@ -16,6 +16,20 @@ def build_model(name: str, cfg: AgentConfig) -> ChatModel:
         from harness_it_all.models.openai_compat import OpenAICompatModel
 
         return OpenAICompatModel(m["model"], base_url=m.get("base_url", "http://127.0.0.1:8000/v1"))
+    if m["backend"] == "deepseek":
+        from harness_it_all.models.openai_compat import OpenAICompatModel
+
+        return OpenAICompatModel(
+            m["model"],
+            base_url=m.get("base_url", "https://api.deepseek.com/v1"),
+            profile_key="deepseek",
+            api_key_env=m.get("api_key_env", "DEEPSEEK_API_KEY"),
+            schema_mode="json_object",
+        )
+    if m["backend"] == "claude_code":
+        from harness_it_all.models.claude_code import ClaudeCodeModel
+
+        return ClaudeCodeModel(m["model"])
     if m["backend"] == "anthropic":
         from harness_it_all.models.anthropic_model import AnthropicModel
 
