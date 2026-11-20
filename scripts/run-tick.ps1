@@ -4,10 +4,10 @@
 # Ist die lokale Engine nicht erreichbar, fällt der Takt für ALLE Agenten aus, damit der Vergleich fair bleibt
 # (PLAN.md 3.5). Jeder Lauf schreibt ein Log nach data\logs\.
 #
-# Aufruf von Hand:  powershell -ExecutionPolicy Bypass -File scripts\run-tick.ps1 [-Agents gemma,deepseek]
+# Aufruf von Hand:  powershell -ExecutionPolicy Bypass -File scripts\run-tick.ps1 [-Agents gemma,opus,deepseek]
 
 param(
-    [string]$Agents = "gemma,deepseek",
+    [string]$Agents = "gemma,opus,deepseek",
     [switch]$DryRun,  # nur zum Testen: zeigt die Depots statt einen Takt auszulösen
     [string]$Repo = (Split-Path -Parent $PSScriptRoot),
     [string]$Uv = "$env:USERPROFILE\.local\bin\uv.exe",
