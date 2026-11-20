@@ -1,4 +1,4 @@
-"""Kommandozeile: snapshot, show, list, news, decide, tick, depots."""
+"""Kommandozeile: snapshot, show, list, news, decide, tick, backtest, depots."""
 
 from __future__ import annotations
 
@@ -195,7 +195,7 @@ def tick(
     store.close()
 
 
-def _agents(names: str, store=None) -> dict:
+def _agents(names: str, store=None, records: Path | None = None) -> dict:
     """LLM-Agenten als Strategien bauen. Jeder Aufruf wird in data/records/decisions.jsonl aufgezeichnet."""
     if not names.strip():
         return {}
@@ -206,7 +206,7 @@ def _agents(names: str, store=None) -> dict:
 
     cfg = load_agent_config()
     profile = load_profile(cfg)
-    recorder = Recorder(Path("data") / "records" / "decisions.jsonl")
+    recorder = Recorder(records or Path("data") / "records" / "decisions.jsonl")
     out = {}
     for name in (n.strip() for n in names.split(",") if n.strip()):
         journal = (lambda depot, s=store: s.notes(depot, cfg.context.journal_notes)) if store else None
@@ -249,6 +249,91 @@ def decide(
     depot = Depot(f"probe-{agent}", start_eur, load_rules())
     strategy(snap, depot)
     _print_trace(agent, strategy.trace)
+
+
+@app.command()
+def backtest(
+    start: str = typer.Option("2026-07-01", help="Erster Handelstag (nach den Wissensstichtagen)"),
+    end: str = typer.Option("", help="Letzter Handelstag (Standard: gestern)"),
+    agents: str = typer.Option("", help="LLM-Agenten aus configs/agent.toml, z. B. gemma,deepseek"),
+    sizes: str = typer.Option("100", help="Startkapital, mehrere mit Komma, z. B. 100,10000"),
+    name: str = typer.Option("default", help="Name des Laufs (eigene Datenbank unter data/backtest/)"),
+    root: Path = typer.Option(Path("data") / "backtest", help="Ordner für Snapshots, News-Cache und Depots"),
+    no_news: bool = typer.Option(False, help="Ohne News"),
+    watchlist: Path = typer.Option(DEFAULT_WATCHLIST, help="Watchlist (TOML)"),
+) -> None:
+    """Rückwirkend handeln: für jeden Handelstag ein Snapshot vor Börsenstart, Ausführung zur Eröffnung.
+
+    Bricht der Lauf ab, macht derselbe Aufruf dort weiter (fertige Tage werden übersprungen).
+    """
+    from datetime import date, timedelta
+
+    from trading_agent.backtest import (
+        BacktestError,
+        HistoricalNewsProvider,
+        build_day,
+        download_bars,
+        trading_days,
+    )
+    from trading_agent.baselines import BASELINES
+    from trading_agent.depot import load_rules
+    from trading_agent.runner import run_tick
+    from trading_agent.snapshot import save_fill_quotes
+    from trading_agent.store import DepotStore
+
+    logging.basicConfig(level=logging.WARNING)
+    first = date.fromisoformat(start)
+    last = date.fromisoformat(end) if end else date.today() - timedelta(days=1)
+    wl = load_watchlist(watchlist)
+    rules = load_rules()
+    console.print(f"Lade Tageskerzen {first} bis {last} …")
+    bars = download_bars(wl, first, last)
+    days = trading_days(bars, first, last)
+    news = None if no_news else HistoricalNewsProvider(root / "news-cache")
+    snaps = root / "snapshots"
+    store = DepotStore(root / f"{name}.sqlite")
+    strategies = dict(BASELINES) | _agents(agents, store, root / f"{name}.records.jsonl")
+    amounts = [float(x) for x in sizes.split(",") if x.strip()]
+    console.print(f"{len(days)} Handelstage, Depots: {', '.join(strategies)} · {sizes} €")
+    for i, day in enumerate(days, 1):
+        try:
+            snap, fill = build_day(wl, bars, day, news)
+        except BacktestError as e:
+            console.print(f"[red]Abbruch:[/red] {e}. Derselbe Aufruf macht später hier weiter.")
+            store.close()
+            raise typer.Exit(3) from e
+        save_snapshot(snap, snaps)
+        save_fill_quotes(fill, snap, snaps)
+        line = []
+        for amount in amounts:
+            for dname, r in run_tick(snap, fill, store, strategies, amount, rules).items():
+                if "agent" in r:
+                    tr = r["agent"]
+                    acts = ", ".join(f"{o['side']} {o['asset']} {o['pct']}%" for o in tr["orders"])
+                    line.append(f"{dname}: {tr['outcome']}" + (f" ({acts})" if acts else ""))
+        console.print(f"[dim]{i:3d}/{len(days)}[/dim] {day} · {len(snap['news'])} News · " + " · ".join(line))
+    _backtest_table(store, f"Backtest {first} bis {last} · {name}")
+    store.close()
+
+
+def _backtest_table(store, title: str) -> None:
+    t = Table(title=title)
+    for col in ("Depot", "Wert €", "Rendite", "max. Verlust", "Trades", "Gebühren €", "Steuern €"):
+        t.add_column(col, justify="left" if col == "Depot" else "right")
+    rows = []
+    for name in store.names():
+        depot = store.load(name)
+        marks = [v for _, v in store.marks(name)]
+        last = marks[-1] if marks else depot.start_eur
+        peak, dd = depot.start_eur, 0.0
+        for v in marks:
+            peak = max(peak, v)
+            dd = min(dd, v / peak - 1)
+        trades = len(depot.fills)
+        rows.append((last / depot.start_eur - 1, name, last, dd, trades, depot.fees_paid, depot.taxes_paid))
+    for ret, name, last, dd, trades, fees, taxes in sorted(rows, reverse=True):
+        t.add_row(name, f"{last:.2f}", _pct(ret), _pct(dd), str(trades), f"{fees:.2f}", f"{taxes:.2f}")
+    console.print(t)
 
 
 @app.command()

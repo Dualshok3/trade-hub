@@ -198,10 +198,28 @@ def test_model_error_is_not_a_rejection(snapshot):
             raise ModelError("Verbindung abgelehnt")
 
     agent = LLMAgent(Broken("kaputt"), PROFILE, CFG)
+    agent.retry_waits = (0, 0)
     assert agent(snapshot, depot()) == []
     assert agent.trace["outcome"] == "error"
     assert agent.trace["rejections"] == []
     assert "Verbindung" in agent.trace["model_error"]
+
+
+def test_connection_error_is_retried(snapshot):
+    class Flaky(FakeModel):
+        fails = 2
+
+        def complete(self, messages, profile, schema=None):
+            if self.fails:
+                self.fails -= 1
+                raise ModelError("getaddrinfo failed")
+            return super().complete(messages, profile, schema)
+
+    model = Flaky("wackelig", answer=lambda messages, schema: answer(order()))
+    agent = LLMAgent(model, PROFILE, CFG)
+    agent.retry_waits = (0, 0)
+    assert agent(snapshot, depot()) == [("SAP", "buy", 0.2, "Prognose angehoben")]
+    assert agent.trace["outcome"] == "trade" and model.fails == 0
 
 
 def test_journal_notes_reach_the_prompt(snapshot):

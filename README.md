@@ -83,6 +83,24 @@ Inside the agent:
 Every model call is recorded through [harness-it-all](https://github.com/Dualshok3/harness-it-all) with input,
 profile hash, model version, tokens, latency and cost, so any decision can be replayed.
 
+## Backtest
+
+`trading-agent backtest` lets the agents trade the past. For every trading day it builds a normal snapshot as if
+it had been taken at 06:30 UTC, before Xetra opens: daily closes up to the day before, indicators on that history,
+and news that Google News dates to the day before. Orders fill at that day's opening price, a price the model
+never saw. From there the same code runs as live: agent, risk check, paper portfolio, fees and tax.
+
+- **No look-ahead in the data:** quotes, history and news are cut at the decision time, and tests check it.
+  Historical news only carry a date, so a news item counts from the following day.
+- **No look-ahead in the model:** a model knows what happened before its training cutoff. The default period
+  therefore starts on 2026-07-01, after the cutoff of every compared model.
+- **Resumable and replayable:** snapshots, fill quotes and the news cache are stored under `data/backtest/`.
+  A run that stops picks up where it left off, and another model can decide later on the same snapshots.
+
+```bash
+uv run trading-agent backtest --agents gemma,deepseek --sizes 100,10000 --name july-nov
+```
+
 ## Benchmark
 
 | Metric | What it measures |
@@ -109,6 +127,7 @@ uv run trading-agent news <file> --asset SAP          # ranked news, as the agen
 uv run trading-agent decide <file> --agent gemma      # one probe decision, nothing is executed
 uv run trading-agent tick --agents gemma,opus         # one live tick: snapshot, decisions, execution
 uv run trading-agent depots                           # state of all portfolios
+uv run trading-agent backtest --agents gemma,deepseek # trade the past, day by day
 ```
 
 ## Configuration
@@ -140,6 +159,7 @@ src/trading_agent/
 ├── store.py       # event-sourced SQLite store (events, pending, marks, decisions)
 ├── baselines.py   # rule-based comparison portfolios
 ├── runner.py      # one tick for all strategies, live and replay alike
+├── backtest.py    # past trading days as snapshots: daily bars, historical news
 └── cli.py
 ```
 

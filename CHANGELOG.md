@@ -3,6 +3,14 @@
 All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Backtest (`trading-agent backtest`): one snapshot per past trading day, built as if taken before the market
+  opened (daily closes up to the day before, news dated the day before), fills at that day's opening price. Same
+  snapshot, agent and portfolio code as live, separate database under `data/backtest/`, resumable.
+- Historical Google News with a per-day cache, so each day is fetched only once.
+
 ## [0.3.0] - 2026-11-20
 
 ### Added

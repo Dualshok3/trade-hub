@@ -8,6 +8,7 @@ Was der Agent im Takt getan hat, steht danach in `trace` und wird mit der Entsch
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from datetime import datetime
 
@@ -42,9 +43,21 @@ class LLMAgent:
         self.recorder = recorder
         self.journal = journal or (lambda depot_name: [])
         self.trace: dict | None = None
+        # Wartezeiten vor erneuten Versuchen, wenn das Modell nicht erreichbar war (Netz, DNS,
+        # Engine-Neustart). Erst danach zählt der Takt als "error".
+        self.retry_waits: tuple[float, ...] = (5.0, 30.0)
 
     def _caller(self, snapshot: dict, depot: Depot):
         def call(messages: list[dict], schema: dict, attempt: int) -> tuple[str | None, dict]:
+            text, info = once(messages, schema, attempt)
+            for wait in self.retry_waits:
+                if text is not None or info.get("fallback_used") or "error" not in info:
+                    break
+                time.sleep(wait)
+                text, info = once(messages, schema, attempt)
+            return text, info
+
+        def once(messages: list[dict], schema: dict, attempt: int) -> tuple[str | None, dict]:
             case = f"{depot.name}:{snapshot['hash']}:{attempt}"
             tags = {
                 "snapshot": snapshot["hash"],
