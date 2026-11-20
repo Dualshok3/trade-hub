@@ -247,6 +247,12 @@ Gebühren im Gewinn.
 - **Verpasster Takt** (PC aus, Engine nicht erreichbar): wird für **beide** Agenten als „ausgefallen“ geloggt. Damit
   der Vergleich fair bleibt, läuft Opus in dem Fall auch nicht.
 
+**Eingerichtet am 20.11.2026:** Windows-Aufgabe „trade-hub tick“, Mo–Fr 09:30, 13:30 und 15:45 (Ortszeit),
+startet `scripts/run-tick.ps1` mit den Agenten `gemma,deepseek` plus allen Vergleichs-Depots. Ist die Engine nicht
+bereit (`/health`), fällt der Takt für alle aus. Logs unter `data/logs/`, Aufrufe in `data/records/decisions.jsonl`.
+Die Aufgabe läuft nur, wenn der PC an und der Nutzer angemeldet ist. Opus kommt dazu, sobald die Claude-Code-CLI
+angemeldet ist; bis dahin entstehen Snapshots, die Opus später im Replay nachentscheiden kann.
+
 ### 3.6 Tools für den Agenten
 
 Die Gemma-Engine kann keine nativen Tool-Aufrufe (Ergebnis Meilenstein 0). Die Tools laufen deshalb als feste
