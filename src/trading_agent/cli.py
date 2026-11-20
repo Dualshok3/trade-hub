@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from trading_agent.config import DEFAULT_WATCHLIST, load_watchlist
@@ -219,15 +220,15 @@ def _print_trace(name: str, tr: dict) -> None:
     if tr["assessment"]:
         console.print(f"  Lage: {tr['assessment']}")
     for o in tr["orders"]:
-        src = ", ".join(o.get("sources", []))
-        console.print(f"  {o['side']} {o['asset']} {o['pct']} % · {o.get('reason', '')} · [{src}]")
+        src = escape("[" + ", ".join(o.get("sources", [])) + "]")
+        console.print(f"  {o['side']} {o['asset']} {o['pct']} % · {o.get('reason', '')} · {src}")
     for rj in tr["rejections"]:
         console.print(f"  [yellow]abgelehnt ({rj['attempt']}):[/yellow] " + " | ".join(rj["violations"]))
     if tr.get("model_error"):
         console.print(f"  [red]Fehler:[/red] {tr['model_error']}")
     for c in tr["calls"]:
         console.print(
-            f"  Aufruf {c['attempt']}: {c.get('input_tokens')} → {c.get('output_tokens')} Tokens, "
+            f"  Aufruf {c['attempt']}: {c.get('input_tokens')} -> {c.get('output_tokens')} Tokens, "
             f"{c.get('latency_s') or 0:.1f} s" + (f", {c['cost_usd']:.4f} $" if c.get("cost_usd") else "")
         )
     if tr["note"]:

@@ -77,6 +77,7 @@ def parse_decision(text: str) -> dict:
             raise ParseError(f"Order {i + 1}: 'pct' muss eine ganze Zahl sein.")
         o.setdefault("reason", "")
         o.setdefault("sources", [])
-    d.setdefault("assessment", "")
-    d.setdefault("note", "")
+    for key in ("assessment", "note"):
+        # c0014 setzt vor Freitext manchmal ": " (Rest des Thinking-Kanals); das gehört nicht zur Antwort
+        d[key] = str(d.get(key, "")).lstrip(": ").strip()
     return d

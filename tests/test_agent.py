@@ -69,6 +69,8 @@ def test_parse_decision_accepts_fences_and_stray_text():
     assert d["orders"][0]["asset"] == "SAP"
     d = parse_decision("thought\n" + answer())
     assert d["orders"] == []
+    d = parse_decision(json.dumps({"assessment": ": Lage ruhig", "orders": [], "note": ":  "}))
+    assert d["assessment"] == "Lage ruhig" and d["note"] == ""
 
 
 @pytest.mark.parametrize(
