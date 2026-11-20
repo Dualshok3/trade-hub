@@ -1,0 +1,52 @@
+# Feste, versionierte Profile. Jeder Aufruf speichert den Hash seines Profils.
+# Ändert sich ein Profil, ist das ein neuer Lauf und kein Teil des alten.
+#
+# Ein Profil legt für jedes Backend fest, wie "gleich" eingestellt aussieht. Völlig gleich geht nicht:
+# - Claude Opus 5.5 kann Thinking nicht abschalten (thinking: disabled → HTTP 400). Gesteuert wird nur über
+#   `effort` (low … max, Standard medium). Temperatur und top_p lehnt das Modell ab.
+# - Gemma über crit kann Thinking an- und abschalten (`enable_thinking`) und Sampling fest einstellen.
+# Diese Unterschiede stehen in `asymmetries` und landen in jedem Report.
+
+[profile.minimal]
+description = "So wenig Nachdenken wie möglich. Standard für Live-Entscheidungen."
+max_tokens = 4000
+asymmetries = [
+  "Opus 5.5 denkt immer (adaptiv); effort=low ist die niedrigste Stufe. Gemma denkt hier gar nicht.",
+  "Opus 5.5 nimmt keine Temperatur an; Gemma läuft mit fester Temperatur und Seed.",
+]
+
+[profile.minimal.openai]
+enable_thinking = false
+temperature = 0.0
+seed = 7
+
+[profile.minimal.anthropic]
+effort = "low"
+
+[profile.think]
+description = "Mit Nachdenken. Für den Replay-Vergleich der Denktiefe."
+max_tokens = 16000
+asymmetries = [
+  "Gemma denkt ohne Budget-Grenze bis max_tokens; Opus 5.5 entscheidet adaptiv, wie viel es bei effort=medium denkt.",
+  "Opus 5.5 nimmt keine Temperatur an; Gemma läuft mit fester Temperatur und Seed.",
+]
+
+[profile.think.openai]
+enable_thinking = true
+temperature = 0.0
+seed = 7
+
+[profile.think.anthropic]
+effort = "medium"
+
+[profile.vote]
+description = "Für Self-Consistency: mehrere Antworten mit Streuung (nur lokal sinnvoll, Opus nimmt keine Temperatur)."
+max_tokens = 4000
+asymmetries = ["Nur für das lokale Modell gedacht; Opus 5.5 streut nur über das adaptive Denken."]
+
+[profile.vote.openai]
+enable_thinking = false
+temperature = 1.0
+
+[profile.vote.anthropic]
+effort = "low"

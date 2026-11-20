@@ -12,6 +12,8 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.7",
     "tzdata>=2024.1",
+    "langgraph>=1.2.24",
+    "harness-it-all",
 ]
 
 [project.scripts]
@@ -42,6 +44,9 @@ ignore = ["RUF001", "RUF002", "RUF003", "B008"]  # deutsche Typografie; B008: ty
 testpaths = ["tests"]
 markers = ["network: braucht Internet (yfinance, RSS); in CI abgewählt"]
 addopts = "-m 'not network'"
+
+[tool.uv.sources]
+harness-it-all = { git = "https://github.com/Dualshok3/harness-it-all", rev = "df64b48" }
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]  # RSS-Beispiele mit langen Zeilen

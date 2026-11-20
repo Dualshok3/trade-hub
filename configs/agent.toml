@@ -1,0 +1,33 @@
+# Einstellungen des LLM-Agenten. Für Gemma und Opus gelten exakt dieselben Werte.
+# Eine Änderung hier ist ein neuer Vergleich: Der Hash dieser Datei steht in jeder Entscheidung.
+
+# Profil aus configs/profiles.toml (gleiche Datei wie in harness-it-all)
+profile = "minimal"
+
+[screen]
+# Watchlist-Check ohne LLM: Nur wenn sich etwas bewegt hat, gibt es eine volle Analyse.
+day_move = 0.02        # |Tagesänderung| ab 2 %
+move_5d = 0.05         # |5-Tage-Änderung| ab 5 %
+news_hours = 6         # relevante News der letzten 6 Stunden
+min_news_score = 1.0   # Mindest-Relevanz einer Meldung (News-Sortierung)
+idle_cash_share = 0.5  # mehr als 50 % Cash: immer analysieren
+max_focus = 6          # höchstens so viele Werte im Detail
+
+[context]
+news_per_asset = 3
+market_news = 5
+journal_notes = 3
+
+[risk]
+max_weight = 0.40      # höchstens 40 % des Depots in einem Wert
+max_orders = 3         # höchstens 3 Orders pro Takt
+max_rejections = 2     # nach 2 Ablehnungen im selben Takt gilt "halten" (erzwungen)
+
+[models.gemma]
+backend = "openai"
+model = "run-20261109T095346Z-1b210ccf/candidate-0014"
+base_url = "http://127.0.0.1:8000/v1"
+
+[models.opus]
+backend = "anthropic"
+model = "claude-opus-5-5"

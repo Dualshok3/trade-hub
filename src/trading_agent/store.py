@@ -147,3 +147,17 @@ class DepotStore:
             "SELECT 1 FROM decisions WHERE depot = ? AND snapshot = ?", (name, snapshot)
         ).fetchone()
         return row is not None
+
+    def notes(self, name: str, n: int = 3) -> list[str]:
+        """Die letzten `n` Notizen, die ein Agent in diesem Depot für sich selbst hinterlassen hat."""
+        rows = self.db.execute(
+            "SELECT at, payload FROM decisions WHERE depot = ? ORDER BY at DESC LIMIT ?", (name, 50)
+        ).fetchall()
+        out = []
+        for at, payload in rows:
+            note = (json.loads(payload).get("agent") or {}).get("note")
+            if note:
+                out.append(f"{at[:16]}: {note}")
+            if len(out) == n:
+                break
+        return list(reversed(out))

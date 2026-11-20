@@ -65,6 +65,9 @@ def run_tick(
             "value_eur": round(value, 4),
             "summary": depot.summary(prices),
         }
+        trace = getattr(strategy, "trace", None)
+        if trace is not None:
+            result["agent"] = trace
         store.record_decision(name, snapshot["hash"], snapshot["taken_at"], result)
         results[name] = result
     return results

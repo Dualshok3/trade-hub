@@ -1,4 +1,4 @@
-"""Kommandozeile: snapshot, show, list, news, tick, depots."""
+"""Kommandozeile: snapshot, show, list, news, decide, tick, depots."""
 
 from __future__ import annotations
 
@@ -137,6 +137,7 @@ def tick(
     start_eur: float = typer.Option(None, help="Startkapital (Standard: live_eur aus configs/depot.toml)"),
     wait: int = typer.Option(1200, help="Höchstens so viele Sekunden auf neuere Ausführungskurse warten"),
     no_news: bool = typer.Option(False, help="Ohne News"),
+    agents: str = typer.Option("", help="LLM-Agenten aus configs/agent.toml, z. B. gemma,opus"),
 ) -> None:
     """Ein Live-Takt: Snapshot einfrieren, Depots entscheiden lassen, zu neueren Kursen ausführen."""
     import time
@@ -158,7 +159,9 @@ def tick(
     prices = YFinanceProvider()
     snap = build_snapshot(wl, prices, None if no_news else RssNewsProvider())
     save_snapshot(snap, out)
-    # Entscheidungen folgen hier später auch von den LLM-Agenten; danach erst die Ausführungskurse abrufen
+    store = DepotStore(db)
+    strategies = dict(BASELINES) | _agents(agents, store)
+    # Die Agenten entscheiden auf dem Snapshot; die Ausführung folgt erst zu neueren Kursen (run_tick)
     deadline = time.monotonic() + wait
     fill = build_fill_quotes(wl, prices, snap)
     # Xetra-Kurse sind bei yfinance rund 15 Minuten verzögert: so lange neu abfragen, bis jeder Wert an einer
@@ -168,8 +171,7 @@ def tick(
         time.sleep(60)
         fill = build_fill_quotes(wl, prices, snap)
     save_fill_quotes(fill, snap, out)
-    store = DepotStore(db)
-    results = run_tick(snap, fill, store, BASELINES, start_eur, rules)
+    results = run_tick(snap, fill, store, strategies, start_eur, rules)
     t = Table(title=f"Takt {snap['taken_at']} · Ausführung {fill['taken_at']}")
     for col in ("Depot", "Wert €", "Rendite", "Orders", "ausgeführt", "wartend", "abgelehnt", "Gebühren €"):
         t.add_column(col, justify="left" if col == "Depot" else "right")
@@ -186,7 +188,66 @@ def tick(
             f"{s['fees_eur']:.2f}",
         )
     console.print(t)
+    for name, r in results.items():
+        if "agent" in r:
+            _print_trace(name, r["agent"])
     store.close()
+
+
+def _agents(names: str, store=None) -> dict:
+    """LLM-Agenten als Strategien bauen. Jeder Aufruf wird in data/records/decisions.jsonl aufgezeichnet."""
+    if not names.strip():
+        return {}
+    from harness_it_all.recorder import Recorder
+
+    from trading_agent.agent import LLMAgent, load_agent_config
+    from trading_agent.agent.models import build_model, load_profile
+
+    cfg = load_agent_config()
+    profile = load_profile(cfg)
+    recorder = Recorder(Path("data") / "records" / "decisions.jsonl")
+    out = {}
+    for name in (n.strip() for n in names.split(",") if n.strip()):
+        journal = (lambda depot, s=store: s.notes(depot, cfg.context.journal_notes)) if store else None
+        out[name] = LLMAgent(build_model(name, cfg), profile, cfg, recorder, journal)
+    return out
+
+
+def _print_trace(name: str, tr: dict) -> None:
+    console.print()
+    console.print(f"[bold]{name}[/bold] · {tr['model']} · {tr['outcome']}")
+    if tr["assessment"]:
+        console.print(f"  Lage: {tr['assessment']}")
+    for o in tr["orders"]:
+        src = ", ".join(o.get("sources", []))
+        console.print(f"  {o['side']} {o['asset']} {o['pct']} % · {o.get('reason', '')} · [{src}]")
+    for rj in tr["rejections"]:
+        console.print(f"  [yellow]abgelehnt ({rj['attempt']}):[/yellow] " + " | ".join(rj["violations"]))
+    if tr.get("model_error"):
+        console.print(f"  [red]Fehler:[/red] {tr['model_error']}")
+    for c in tr["calls"]:
+        console.print(
+            f"  Aufruf {c['attempt']}: {c.get('input_tokens')} → {c.get('output_tokens')} Tokens, "
+            f"{c.get('latency_s') or 0:.1f} s" + (f", {c['cost_usd']:.4f} $" if c.get("cost_usd") else "")
+        )
+    if tr["note"]:
+        console.print(f"  Notiz: {tr['note']}")
+
+
+@app.command()
+def decide(
+    path: Path,
+    agent: str = typer.Option("gemma", help="Agent aus configs/agent.toml"),
+    start_eur: float = typer.Option(100.0, help="Startkapital des Probedepots"),
+) -> None:
+    """Probeentscheidung auf einem gespeicherten Snapshot mit leerem Depot. Nichts wird ausgeführt."""
+    from trading_agent.depot import Depot, load_rules
+
+    snap = load_snapshot(path)
+    strategy = _agents(agent)[agent]
+    depot = Depot(f"probe-{agent}", start_eur, load_rules())
+    strategy(snap, depot)
+    _print_trace(agent, strategy.trace)
 
 
 @app.command()
